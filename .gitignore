@@ -1,0 +1,23 @@
+# Entorno virtual y dependencias
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+
+# Variables de entorno y secretos
+.env
+.env.local
+lookup_map.json
+*.key
+
+# Cache y datos temporales
+.cache/
+.pytest_cache/
+*.log
+
+# Snapshots temporales y reportes de prueba
+reports/*.md
+reports/*.cli
+reports/*.json
+!reports/.gitkeep
