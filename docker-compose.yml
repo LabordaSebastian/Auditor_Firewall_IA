@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  batfish:
+    image: batfish/allinone:latest
+    container_name: batfish-allinone
+    restart: unless-stopped
+    ports:
+      - "9997:9997" # Batfish Coordinator REST API
+      - "9996:9996" # Batfish Worker Work API
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    environment:
+      - BATFISH_VERSION=latest

@@ -1,0 +1,25 @@
+# Motor de IA (SDK Oficial Google Gemini)
+google-genai>=1.0.0
+
+# Verificación Formal de Red
+pybatfish>=0.58.0
+
+# Parser y Topología Cisco
+ciscoconfparse2>=0.4.0
+
+# Sanitización de configuraciones
+netconan>=0.14.0
+
+# Modelos y Validación de Datos
+pydantic>=2.6.0
+
+# CLI Interactiva y Salida Formateada
+typer>=0.9.0
+rich>=13.7.0
+
+# Configuración y Variables de Entorno
+python-dotenv>=1.0.0
+
+# Testing y Desarrollo
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
