@@ -68,6 +68,18 @@ Todos los commits que se realicen deben seguir rigurosamente la especificación 
   * Reportes de prueba transitorios en `reports/` (los reportes de demostración deben mantenerse limpios y controlados).
   * Entornos virtuales (`.venv/`).
 
+### 3.5 Conectividad de Red con GitHub (SSH sobre Puerto 443 Obligatorio)
+* **Restricción de Firewall en el Host:** El firewall corporativo/red del entorno bloquea el puerto saliente estándar `22/tcp` hacia GitHub (`Connection timed out during banner exchange`).
+* **Regla Obligatoria:** Todo push, fetch o interacción Git remota con GitHub **DEBE realizarse por el puerto HTTPS 443 (`ssh.github.com:443`)**.
+* **Configuración Local Persistente (`~/.ssh/config`):**
+  ```ssh
+  Host github.com
+      Hostname ssh.github.com
+      Port 443
+      User git
+  ```
+  Jamás alterar ni remover esta directiva para evitar que los comandos `git push` o `git pull` se cuelguen por timeout.
+
 ---
 
 ## 🔒 4. Protocolo de Privacidad y Cero Fugas (Zero-Leak)
