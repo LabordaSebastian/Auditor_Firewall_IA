@@ -59,7 +59,7 @@
 ### 4. Parser Profundo de `object-group` y Lógica NAT en Cisco ASA (8.3+)
 * **Contexto:** En Cisco ASA versión 8.3 en adelante, el orden de evaluación de NAT y ACL exige que las reglas de entrada en la interfaz `outside` utilicen la **IP privada real (pre-NAT)** del servidor destino. Además, se emplean grupos de objetos anidados (`object-group network` y `object-group service`).
 * **Mejora:**
-  1. Ampliar el [local_math_fallback.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/local_math_fallback.py) para desempaquetar y "aplanar" recursivamente los `object-group`.
+  1. Extender las consultas de Batfish (`bf.q.searchFilters`) y [topology_extractor.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/topology_extractor.py) para auditar la resolución completa de `object-group` anidados y reglas NAT pre/post-traducción en Cisco ASA.
   2. Implementar una heurística que detecte si una ACL de ASA está apuntando por error a la IP pública externa en vez de a la IP pre-NAT, alertando sobre descartes involuntarios de tráfico legítimo.
 
 ---

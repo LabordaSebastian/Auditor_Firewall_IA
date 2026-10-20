@@ -107,7 +107,7 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
   5. Trazabilidad Forense en Data Plane (verificación de cierre explícito `deny ip any any log` antes del *implicit deny* silencioso).
   6. Seguridad del Management Plane (`access-class` en `line vty`, `transport input ssh`, restricción de ASDM/SSH y SNMP en ASA).
   7. Generación de Remediación Segura y Rollback en sintaxis exacta de Cisco CLI.
-* **RF-04.2:** Incluir en `references/cis-cisco-controls.md` el mapeo de hallazgos hacia controles **CIS Cisco IOS/ASA Benchmark**, **DISA STIG** y **NIST CSF (`PR.AC-4`, `PR.AC-5`, `PR.PT-4`, `DE.CM-1`)**.
+* **RF-04.2 (Formato APB de Controles Normativos):** Incluir en `references/cis-cisco-controls.md` y forzar en el prompt de Gemini que los controles **CIS Cisco Benchmark**, **DISA STIG** y **NIST CSF** se devuelvan en formato transparente APB (`CODIGO - Nombre Amigable: Explicación sencilla de qué exige la norma`), eliminando siglas crípticas aisladas en los informes técnicos y ejecutivos.
 * **RF-04.3:** Incluir en `references/blast-radius-matrix.md` la guía de clasificación de impacto operativo (*Riesgo Nulo*, *Riesgo Bajo*, *Riesgo Medio*, *Riesgo Alto*) y los criterios para redactar el **Plan A (Hardening Directo)** y el **Plan B (Transición con Logging)**.
 
 ### RF-05: Integración con Gemini Pro (`src/gemini_advisor.py`)
@@ -131,8 +131,7 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RNF-01 (Privacidad y Seguridad Zero-Leak):** Ninguna dirección IP pública real ni cadena de contraseña/comunidad SNMP del archivo original debe ser transmitida en el payload HTTP hacia la API de Google Gemini cuando el flag `--sanitize` esté activo (activo por defecto `[Sugerido por la IA]`).
 * **RNF-02 (Compatibilidad Sintáctica con Batfish):** El sanitizador no debe reemplazar IPs públicas por cadenas de texto arbitrarias (como `"PUBLIC_IP_1"`), ya que eso rompería el parser de Batfish. Debe mapearlas biunívocamente a direcciones IPv4 válidas reservadas para documentación/benchmarking (RFC 5737 / RFC 2544: `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `198.18.0.0/15`) conservando la longitud de prefijo o máscara *wildcard* exacta.
 * **RNF-03 (Determinismo y Precisión):** La temperatura del modelo Gemini debe fijarse en `0.1`. Ninguna afirmación sobre reglas solapadas (*shadowed*) debe originarse por inferencia libre del LLM si no está respaldada por el output de Batfish o del verificador de subredes.
-* **RNF-04 (Rendimiento en Xubuntu):** El contenedor de Batfish debe limitarse en `docker-compose.yml` a un máximo de `4g` de memoria RAM (`mem_limit: 4g`) para garantizar fluidez en equipos con 8 GB de RAM en Xubuntu `[Sugerido por la IA]`.
-* **RNF-05 (Tolerancia a Fallos / Modo Fallback `[Sugerido por la IA]`):** Si el contenedor Docker de Batfish no está corriendo, la herramienta debe alertar al usuario y ofrecer un flag `--fallback-local-math` que utilice un analizador ligero en Python puro (`ciscoconfparse2` + `ipaddress.ip_network.overlaps()`) para no bloquear el uso básico del laboratorio.
+* **RNF-05 (Verificación Formal Estricta - Batfish Obligatorio):** La verificación matemática de alcanzabilidad de reglas, solapamiento y topología se delega de forma exclusiva al motor formal Batfish en contenedor Docker (`localhost:9997`). Se descontinúa cualquier motor heurístico local para asegurar rigor de grado telecomunicaciones (cero alucinaciones). Si el servicio no está disponible, el sistema alerta de forma bloqueante instruyendo iniciar el contenedor.
 
 ---
 
@@ -247,13 +246,14 @@ cisco-ai-firewall-auditor/
 │   ├── sanitizer.py                    # Sanitización reversible de IPs públicas (RFC 5737) y secretos
 │   ├── topology_extractor.py           # Parser con ciscoconfparse2 (Interfaces, ACLs, Remarks, Huérfanas)
 │   ├── batfish_analyzer.py             # Cliente pybatfish (filterLineReachability, searchFilters, compareFilters)
-│   ├── local_math_fallback.py          # Analizador ligero con ipaddress si Docker no está activo [Sugerido por la IA]
 │   ├── gemini_advisor.py               # Integración con google-genai, carga de Skill y validación Pydantic
 │   ├── report_builder.py               # De-sanitización local y renderizado de archivos .md, .json y .cli [Sugerido por la IA]
 │   └── cli.py                          # Punto de entrada con Typer y Rich (comandos: audit, sanitize-preview, check-env)
-├── tests/                              # Tests unitarios básicos para sanitizer y parser [Sugerido por la IA]
+├── tests/                              # Tests unitarios para sanitizer, parser, reportes y Batfish
 │   ├── test_sanitizer.py
-│   └── test_topology_extractor.py
+│   ├── test_topology_extractor.py
+│   ├── test_report_builder.py
+│   └── test_batfish_analyzer.py
 └── reports/                            # Salida de informes Markdown y scripts .cli de remediación y rollback
     └── .gitkeep
 ```
@@ -266,6 +266,28 @@ cisco-ai-firewall-auditor/
    * **Paso 1:** Crear los archivos de configuración base (`docker-compose.yml`, `requirements.txt`, `.env.example`, `.gitignore`) y los modelos de datos en `src/models.py`.
    * **Paso 2:** Redactar de forma exhaustiva los archivos de conocimiento en `skills/cisco-security-advisor/` (`SKILL.md` y los 3 archivos en `references/`).
    * **Paso 3:** Crear las configuraciones vulnerables de laboratorio en `snapshots/lab_cisco_vuln/configs/` (`fw-borde-ios.cfg` y `fw-borde-asa.cfg`) asegurando que contengan casos reales de *shadowing*, puertos de gestión expuestos, reglas temporales vencidas e IP públicas simuladas para poner a prueba el sanitizador.
-   * **Paso 4:** Implementar `src/sanitizer.py`, `src/topology_extractor.py` y `src/batfish_analyzer.py` (incluyendo el fallback matemático local en `src/local_math_fallback.py`).
+   * **Paso 4:** Implementar `src/sanitizer.py`, `src/topology_extractor.py` y `src/batfish_analyzer.py`.
    * **Paso 5:** Implementar `src/gemini_advisor.py` usando exclusivamente el SDK `google-genai` (`client = genai.Client()`), `src/report_builder.py` y la interfaz de línea de comandos en `src/cli.py`.
    * **Paso 6:** Generar un `README.md` completo en español (con diagramas Mermaid de arquitectura y guía paso a paso en Xubuntu) listo para publicar en GitHub.
+
+---
+
+## 9. Registro de Decisiones de Diseño e Historial Técnico (ADR)
+
+### ADR-001 (2026-10-20): Adopción de Formato APB para Controles Normativos
+* **Estado:** Aprobado e Implementado.
+* **Contexto:** La salida original de controles normativos en `HallazgoFirewall.controles_normativos` presentaba únicamente siglas secas (`CIS-IOS-3.1.4`, `DISA STIG NET-0405`, `NIST CSF PR.AC-4`), resultando críptica para audiencias no especializadas y gerencia.
+* **Decisión Técnica:** 
+  1. Forzar en el esquema Pydantic y en el prompt del sistema que Gemini devuelva cada control bajo la estructura:  
+     `CODIGO - Nombre Amigable: Explicación sencilla de qué exige la norma`.
+  2. Modificar [report_builder.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/report_builder.py) para renderizar cada control como una viñeta individual con icono `🛡️` bajo la sección *Controles Normativos Incumplidos (Estándares de Seguridad)*.
+* **Impacto:** Reportes 100% legibles y transparentes para cualquier lector, sin necesidad de consultar manualmente los frameworks externos.
+
+### ADR-002 (2026-10-20): Descontinuación del Fallback Heurístico Local y Adopción Exclusiva de Batfish
+* **Estado:** Aprobado e Implementado.
+* **Contexto:** Se contaba con un motor fallback en Python puro (`local_math_fallback.py`) para operar en ausencia de Docker/Batfish. Si bien aportaba portabilidad básica, sus heurísticas regex tenían limitaciones estructurales con objetos complejos de Cisco ASA, rangos de puertos y no permitían análisis diferencial ni traceroutes virtuales.
+* **Decisión Técnica:**
+  1. Dar de baja `src/local_math_fallback.py` y remover el flag `--fallback-local-math` del CLI.
+  2. Establecer **Batfish (Docker)** como requisito de infraestructura formal obligatorio en la Etapa 3 del pipeline.
+  3. Crear suite de pruebas directas en [tests/test_batfish_analyzer.py](file:///home/ing-laborda/Auditor_Firewall_IA/tests/test_batfish_analyzer.py).
+* **Impacto:** Nivel enterprise garantizado (BDDs de Microsoft/UCLA), cero falsos positivos matemáticos, simplificación del codebase y habilitación directa para simulación digital twin diferencial.

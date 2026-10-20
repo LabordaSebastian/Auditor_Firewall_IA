@@ -58,3 +58,12 @@ Para cada hallazgo identificado:
    * Diseñado para administradores temerosos de cortes: en lugar de bloquear abruptamente, insertar temporalmente una regla equivalente con cláusula `log` para auditar hits en Syslog durante 7-14 días antes del bloqueo definitivo.
 4. **Script de Rollback:**
    * Comandos Cisco CLI exactos para revertir la acción en segundos si algo falla.
+
+## Directiva de Formato para Controles Normativos (Apto para Todo Público - APB)
+Al citar estándares en `controles_normativos` de cada hallazgo, está terminantemente prohibido listar únicamente siglas o códigos secos (ej. `CIS-IOS-3.1.4`).
+Se debe proveer siempre la identificación acompañada del nombre amigable y una explicación simple de una frase que cualquier persona o auditor pueda entender de inmediato:
+* **Formato obligatorio:** `CODIGO - Nombre Amigable: Explicación sencilla de qué exige la norma.`
+* **Ejemplos requeridos:**
+  * `DISA STIG NET-0405 - Orden de Prioridad: Exige que las reglas específicas precedan a las generales para no anular bloqueos.`
+  * `CIS-IOS-3.1.4 - Higiene de Firewall: Exige eliminar reglas inalcanzables, duplicadas o comentarios vencidos.`
+  * `NIST CSF PR.AC-4 - Mínimo Privilegio: Exige abrir únicamente los puertos indispensables para el servicio, bloqueando el resto.`

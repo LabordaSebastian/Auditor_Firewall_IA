@@ -34,7 +34,14 @@ class HallazgoFirewall(BaseModel):
         description="Ej: Shadowed Rule, Critical Shadowing (Permit sobre Deny), Exposición WAN, Permisividad Excesiva, Higiene/Regla Temporal, Falta de Logging, Management Plane"
     )
     confirmado_por_batfish: bool = Field(description="True si fue validado matemáticamente por Batfish")
-    controles_normativos: List[str] = Field(description="Controles CIS Cisco Benchmark, DISA STIG o NIST CSF aplicables")
+    controles_normativos: List[str] = Field(
+        description=(
+            "Lista de controles normativos en formato claro para todo público (APB): "
+            "'CODIGO - Nombre Corto: Explicación sencilla de qué exige la norma'. "
+            "Ej: 'DISA STIG NET-0405 - Orden de Reglas: Exige que las reglas específicas precedan a las generales para no anular bloqueos.' "
+            "NUNCA devolver solo siglas secas sin explicación."
+        )
+    )
     diagnostico_tecnico: str = Field(description="Explicación detallada de por qué la regla es vulnerable o ineficiente")
     como_mejora_la_red: str = Field(description="Beneficio directo de seguridad o rendimiento al corregir esta regla")
     nivel_impacto_operativo: NivelImpactoEnum

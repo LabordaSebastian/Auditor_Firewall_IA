@@ -12,7 +12,6 @@ from src.config import REPORTS_DIR, GEMINI_API_KEY, GEMINI_MODEL, BATFISH_HOST, 
 from src.sanitizer import ConfigSanitizer
 from src.topology_extractor import CiscoTopologyExtractor
 from src.batfish_analyzer import BatfishAnalyzer, BatfishUnavailableError
-from src.local_math_fallback import LocalMathFallbackAnalyzer
 from src.gemini_advisor import GeminiFirewallAdvisor
 from src.report_builder import ReportBuilder
 
@@ -43,8 +42,9 @@ def check_env():
         analyzer.connect()
         console.print(f"✅ [bold green]Batfish:[/bold green] Conectado exitosamente en {BATFISH_HOST}:{BATFISH_PORT}")
     except Exception as e:
-        console.print(f"⚠️ [bold yellow]Batfish:[/bold yellow] No disponible ({e})")
-        console.print("   [dim]Se utilizará automáticamente el analizador matemático local fallback.[/dim]")
+        console.print(f"❌ [bold red]Batfish:[/bold red] No disponible ({e})")
+        console.print("   [bold yellow]Batfish es un requisito obligatorio del sistema.[/bold yellow]")
+        console.print("   [dim]Inicia el servicio ejecutando:[/dim] [cyan]docker compose up -d[/cyan]")
 
 
 @app.command()
@@ -79,11 +79,10 @@ def audit(
     config_path: Path = typer.Argument(..., help="Ruta al archivo de configuración Cisco (.cfg)"),
     sanitize: bool = typer.Option(True, "--sanitize/--no-sanitize", help="Activar sanitización reversible (Recomendado)"),
     output_dir: Path = typer.Option(REPORTS_DIR, "--output", "-o", help="Directorio para los reportes generados"),
-    fallback_local_math: bool = typer.Option(False, "--fallback-local-math", help="Forzar análisis matemático local sin Batfish"),
 ):
     """
     Ejecuta la auditoría integral completa:
-    Sanitización ➔ Topología ➔ Batfish/Math ➔ Gemini Cognitivo ➔ Reportes y Scripts CLI.
+    Sanitización ➔ Topología ➔ Batfish Formal ➔ Gemini Cognitivo ➔ Reportes y Scripts CLI.
     """
     console.print(
         Panel.fit(
@@ -136,37 +135,32 @@ def audit(
             ),
         )
 
-        # Etapa 3: Verificación Formal Matemática
-        task3 = progress.add_task("[cyan]Etapa 3: Verificación matemática de ACLs...", total=None)
-        math_findings = []
-        used_batfish = False
-
-        if not fallback_local_math:
-            try:
-                batfish = BatfishAnalyzer()
-                batfish.connect()
-                math_findings = batfish.analyze_snapshot(sanitized_config, config_filename=config_path.name)
-                used_batfish = True
-                progress.update(
-                    task3,
-                    description=f"[green]Etapa 3: Verificación Batfish completada.[/green] ({len(math_findings)} anomalías matemáticas confirmadas)",
-                )
-            except Exception as e:
-                progress.update(
-                    task3,
-                    description=f"[yellow]Etapa 3: Batfish no disponible. Activando analizador matemático local...[/yellow]",
-                )
-                math_findings = LocalMathFallbackAnalyzer.analyze_acls(sanitized_config)
-                progress.update(
-                    task3,
-                    description=f"[green]Etapa 3: Análisis matemático local completado.[/green] ({len(math_findings)} anomalías detectadas)",
-                )
-        else:
-            math_findings = LocalMathFallbackAnalyzer.analyze_acls(sanitized_config)
+        # Etapa 3: Verificación Formal Matemática con Batfish (Obligatorio)
+        task3 = progress.add_task("[cyan]Etapa 3: Verificación formal matemática con Batfish...", total=None)
+        try:
+            batfish = BatfishAnalyzer(host=BATFISH_HOST, port=BATFISH_PORT)
+            batfish.connect()
+            math_findings = batfish.analyze_snapshot(sanitized_config, config_filename=config_path.name)
             progress.update(
                 task3,
-                description=f"[green]Etapa 3: Análisis matemático local completado.[/green] ({len(math_findings)} anomalías detectadas)",
+                description=f"[green]Etapa 3: Verificación formal Batfish completada.[/green] ({len(math_findings)} anomalías matemáticas confirmadas)",
             )
+        except Exception as e:
+            progress.stop()
+            console.print("\n")
+            console.print(
+                Panel(
+                    f"[bold red]Error Crítico en Etapa 3 (Batfish Requerido):[/bold red]\n\n"
+                    f"No se pudo conectar a Batfish en [cyan]{BATFISH_HOST}:{BATFISH_PORT}[/cyan].\n"
+                    f"Detalle: [dim]{e}[/dim]\n\n"
+                    f"Para garantizar un análisis matemático formal con rigor de grado telecomunicaciones (sin alucinaciones),\n"
+                    f"el servicio de Batfish es un componente obligatorio del sistema.\n\n"
+                    f"👉 [bold green]Inicia el contenedor ejecutando:[/bold green] [cyan]docker compose up -d[/cyan]",
+                    title="⚠️ Falla de Verificación Formal",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
 
         # Etapa 4: Razonamiento Cognitivo con Gemini y Skill
         task4 = progress.add_task(f"[cyan]Etapa 4: Razonamiento semántico con Gemini ({GEMINI_MODEL})...", total=None)

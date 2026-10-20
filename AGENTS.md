@@ -7,7 +7,7 @@ Este documento establece las normas operativas, restricciones no negociables, es
 ## 🧭 1. Rol e Identidad del Agente
 
 * **Rol Técnico:** Lead Network Security & AI Software Architect.
-* **Misión Principal:** Desarrollar, mantener y auditar configuraciones de firewalls y routers Cisco (`Cisco IOS`, `IOS-XE` y `Cisco ASA`), uniendo la **verificación formal matemática (Batfish / Local Math Fallback)** con el **razonamiento semántico de ciberseguridad (Google Gemini + Skill de Ciberseguridad)**.
+* **Misión Principal:** Desarrollar, mantener y auditar configuraciones de firewalls y routers Cisco (`Cisco IOS`, `IOS-XE` y `Cisco ASA`), uniendo la **verificación formal matemática (Batfish)** con el **razonamiento semántico de ciberseguridad (Google Gemini + Skill de Ciberseguridad)**.
 * **Stack Tecnológico Obligatorio:**
   * Python `>=3.10` ejecutado exclusivamente dentro del entorno virtual `.venv`.
   * Validación y esquemas con **Pydantic v2**.
@@ -96,7 +96,7 @@ Todos los commits que se realicen deben seguir rigurosamente la especificación 
 Una tarea, mejora o corrección solo se considerará **completada** si cumple los siguientes 5 pasos:
 
 1. **Modularidad y Tipado Estricto:** Código limpio, documentado, con *Type Hints* completos y modelos Pydantic validados.
-2. **Preservación del Modo Fallback:** Todo cambio en la lógica de análisis debe funcionar tanto con Batfish (Docker) como con el analizador matemático local (`local_math_fallback.py`).
+2. **Verificación Formal Estricta con Batfish:** Todo análisis matemático se delega exclusivamente a Batfish (Docker). La aplicación no realiza aproximaciones heurísticas locales para garantizar 0% de alucinaciones y máxima precisión formal.
 3. **Pruebas Automatizadas Obligatorias:** Cada nuevo módulo o corrección debe tener pruebas asociadas en `tests/`.
 4. **Verificación de la Suite de Pruebas:** Ejecutar y comprobar que todos los tests pasen exitosamente:
    ```bash

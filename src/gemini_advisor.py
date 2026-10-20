@@ -72,6 +72,7 @@ class GeminiFirewallAdvisor:
             "- Debes incluir TODOS los hallazgos matemáticos confirmados por Batfish/verificador.\n"
             "- Identifica además vulnerabilidades normativas (puertos inseguros expuestos en WAN, falta de deny ip any any log, permisividad excesiva, VTY inseguras, etc.).\n"
             "- Para cada hallazgo, proporciona un Plan A (Hardening Estricto) y un Plan B (Transición con Logging de prueba).\n"
+            "- En 'controles_normativos', NUNCA pongas solo códigos secos (como 'CIS-IOS-3.1.4'). DEBES redactar cada control en formato para todo público (APB): 'CODIGO - Nombre Amigable: Explicación sencilla de 1 renglón de qué exige la norma'.\n"
             "- Devuelve ÚNICAMENTE la estructura JSON que valida exactamente contra el esquema requerido."
         )
 

@@ -27,7 +27,7 @@ graph TD
     A[Configuración Cisco .cfg cruda] --> B[Capa 1: Sanitizador Reversible RFC 5737]
     B -->|Config Sanitizada| C[Capa 2: Extractor de Topología y Contexto]
     B -->|Lookup Map local| H[Capa 6: De-sanitizador Local]
-    C --> D[Capa 3: Verificación Formal Batfish / Fallback Math]
+    C --> D[Capa 3: Verificación Formal Batfish BDD]
     D --> E[Capa 4: Motor Cognitivo Gemini + Skill Ciberseguridad]
     E -->|Reporte Estructurado JSON| H
     H --> I[📄 Reporte Markdown reports/auditoria.md]
@@ -74,14 +74,13 @@ BATFISH_PORT=9997
 ```bash
 docker compose up -d
 ```
-*(Nota: Si no deseas o no puedes correr Docker en este momento, la herramienta incluye un analizador matemático local que funciona de forma automática).*
 
 ---
 
 ## 💻 Uso de la Línea de Comandos (CLI)
 
 ### Diagnóstico del Entorno
-Verifica que las credenciales y servicios estén listos:
+Verifica que las credenciales y el contenedor Batfish estén listos:
 ```bash
 python -m src.cli check-env
 ```
@@ -93,14 +92,9 @@ python -m src.cli sanitize-preview snapshots/lab_cisco_vuln/configs/fw-borde-ios
 ```
 
 ### Ejecutar Auditoría Completa
-Audita un router o firewall Cisco con el pipeline completo:
+Audita un router o firewall Cisco con el pipeline completo (Batfish formal + Gemini):
 ```bash
 python -m src.cli audit snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg
-```
-
-Si deseas forzar el analizador matemático local (sin contenedor Docker):
-```bash
-python -m src.cli audit snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg --fallback-local-math
 ```
 
 ---

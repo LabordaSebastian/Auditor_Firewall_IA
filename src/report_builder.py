@@ -126,7 +126,17 @@ class ReportBuilder:
                 f"### Hallazgo `{h.id_hallazgo}`: {h.categoria_problema} en `{h.acl_o_componente}`",
                 f"* **Regla Afectada:** `{h.linea_o_regla_afectada}`",
                 f"* **Severidad:** `{h.severidad.value}` | **Impacto Operativo:** `{h.nivel_impacto_operativo.value}`",
-                f"* **Controles Normativos Incumplidos:** {', '.join(f'`{c}`' for c in h.controles_normativos)}",
+                "",
+                "**Controles Normativos Incumplidos (Estándares de Seguridad):**",
+            ])
+
+            if h.controles_normativos:
+                for c in h.controles_normativos:
+                    lines.append(f"* 🛡️ {c}")
+            else:
+                lines.append("* 🛡️ Sin controles específicos asignados.")
+
+            lines.extend([
                 "",
                 f"**Diagnóstico Técnico:**  ",
                 f"{h.diagnostico_tecnico}",
