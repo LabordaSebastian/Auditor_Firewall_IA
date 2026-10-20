@@ -25,6 +25,17 @@ class OpcionDecision(BaseModel):
     comandos_cli_rollback: List[str]
 
 
+class DesgloseReglaVisual(BaseModel):
+    rol: str = Field(description="Rol de la regla, ej: 'Regla Superior (Bloqueadora)', 'Regla Inferior (Oculta/Tapada)' o 'Regla Única'")
+    secuencia: str = Field(description="Número de línea o secuencia de la regla, ej: '10' o '-'")
+    accion: str = Field(description="PERMIT o DENY")
+    protocolo: str = Field(description="tcp, udp, ip, icmp, etc.")
+    origen: str = Field(description="any, subred, host X.X.X.X")
+    destino: str = Field(description="any, subred, host X.X.X.X")
+    puerto: str = Field(description="eq 443, range 1024-65535, cualquiera o '-'")
+    estado_flujo: str = Field(description="Breve diagnóstico del flujo, ej: 'Captura todo el tráfico', 'Inalcanzable (Anulada)', 'Expuesto a WAN'")
+
+
 class HallazgoFirewall(BaseModel):
     id_hallazgo: str = Field(description="Identificador único, ej: FW-CISCO-001")
     acl_o_componente: str = Field(description="Nombre de la ACL, interfaz o línea VTY afectada")
@@ -34,6 +45,13 @@ class HallazgoFirewall(BaseModel):
         description="Ej: Shadowed Rule, Critical Shadowing (Permit sobre Deny), Exposición WAN, Permisividad Excesiva, Higiene/Regla Temporal, Falta de Logging, Management Plane"
     )
     confirmado_por_batfish: bool = Field(description="True si fue validado matemáticamente por Batfish")
+    desglose_visual: List[DesgloseReglaVisual] = Field(
+        default_factory=list,
+        description="Desglose tabular de la regla o reglas en conflicto (2 filas si es colisión/shadowing/redundancia, 1 fila si es regla individual)",
+    )
+    punto_critico_error: str = Field(
+        description="Explicación en 1 frase concisa remarcando dónde está exactamente el choque de reglas o vector de error",
+    )
     controles_normativos: List[str] = Field(
         description=(
             "Lista de controles normativos en formato claro para todo público (APB): "

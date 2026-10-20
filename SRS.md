@@ -120,7 +120,13 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
   * Resumen Ejecutivo y Puntaje de Postura de Seguridad (0 a 100).
   * Mapa de Interfaces y ACLs auditadas.
   * Tabla resumen de hallazgos por severidad y radio de impacto (*Blast Radius*).
-  * Ficha detallada por cada hallazgo (Diagnóstico, Mejora para la red, Efectos secundarios posibles, Decisión Plan A vs. Plan B, Comandos CLI y Comandos de Rollback).
+  * Ficha detallada por cada hallazgo:
+    * **Desglose Tabular Visual (ADR-003):** Tabla comparativa de colisión de reglas (Regla Superior vs Inferior) o desglose de regla única.
+    * **Punto Crítico del Error:** Alerta destacada remarcando el vector de riesgo o choque exacto.
+    * Controles normativos en formato explicativo APB (ADR-001).
+    * Diagnóstico técnico, beneficio para la red y análisis de efectos colaterales (*Blast Radius*).
+    * Opciones de decisión (**Plan A: Hardening Estricto** vs. **Plan B: Transición con Monitoreo**).
+    * Scripts Cisco CLI listos para aplicar y revertir (Rollback).
 * **RF-06.2:** Exportar archivos independientes `.cli` (`remediacion_<nombre>.cli` y `rollback_<nombre>.cli`) con sintaxis válida de modo configuración de Cisco (`configure terminal`, números de secuencia de ACL o recreación ordenada de ACEs, y `end` / `write memory` comentados por seguridad).
 * **RF-06.3:** Incluir en el repositorio un archivo de configuración de laboratorio (`snapshots/lab_cisco_vuln/configs/fw-borde-cisco.cfg`) con **al menos 7 vulnerabilidades representativas inyectadas** (Shadowed rule, Permit sobre Deny, Telnet/23 expuesto en WAN, `remark` temporal vencido de proveedor, `permit ip any any` interno sin segmentación, falta de `deny ip any any log` explícito, y VTY sin `access-class` o con Telnet habilitado) para pruebas inmediatas y demostración en GitHub.
 
@@ -291,3 +297,12 @@ cisco-ai-firewall-auditor/
   2. Establecer **Batfish (Docker)** como requisito de infraestructura formal obligatorio en la Etapa 3 del pipeline.
   3. Crear suite de pruebas directas en [tests/test_batfish_analyzer.py](file:///home/ing-laborda/Auditor_Firewall_IA/tests/test_batfish_analyzer.py).
 * **Impacto:** Nivel enterprise garantizado (BDDs de Microsoft/UCLA), cero falsos positivos matemáticos, simplificación del codebase y habilitación directa para simulación digital twin diferencial.
+
+### ADR-003 (2026-10-20): Visualización Tabular de Colisión de Reglas y Punto Crítico del Choque
+* **Estado:** Aprobado e Implementado.
+* **Contexto:** En auditorías con reglas superpuestas o anomalías perimétricas, presentar la regla afectada únicamente como una cadena plana de texto dificultaba distinguir de un vistazo el choque exacto entre direcciones, máscaras wildcard y puertos.
+* **Decisión Técnica:**
+  1. Incorporar el modelo Pydantic `DesgloseReglaVisual` (`rol`, `secuencia`, `accion`, `protocolo`, `origen`, `destino`, `puerto`, `estado_flujo`) y el atributo `punto_critico_error` en `HallazgoFirewall`.
+  2. Instruir al modelo Gemini para generar comparativas de 2 filas en conflictos (*Regla Superior (Bloqueadora)* vs *Regla Inferior (Oculta/Tapada)*) o de 1 fila en reglas individuales vulnerables, junto con un resumen de punto crítico.
+  3. Renderizar en [report_builder.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/report_builder.py) una tabla visual Markdown con insignias de color (🟢 `PERMIT`, 🔴 `DENY`) y un bloque destacado de alerta (`> ⚠️ Punto Crítico del Error`).
+* **Impacto:** Comprensión visual inmediata del choque de reglas (*Top-Down* de Cisco) para administradores y auditores, manteniendo la de-sanitización automática de IPs y la compatibilidad con el JSON estructurado.

@@ -9,6 +9,7 @@ from src.models import (
     NivelImpactoEnum,
     OpcionDecision,
     ContextoTopologia,
+    DesgloseReglaVisual,
 )
 from src.report_builder import ReportBuilder
 
@@ -37,6 +38,19 @@ def test_report_builder_desanitizes_and_generates_files():
         severidad=SeveridadEnum.CRITICA,
         categoria_problema="Exposición WAN",
         confirmado_por_batfish=True,
+        desglose_visual=[
+            DesgloseReglaVisual(
+                rol="Regla Única",
+                secuencia="10",
+                accion="PERMIT",
+                protocolo="tcp",
+                origen="any",
+                destino=f"host {synthetic_ip}",
+                puerto="eq 23",
+                estado_flujo="Expuesto a WAN",
+            )
+        ],
+        punto_critico_error=f"Puerto Telnet 23 abierto hacia {synthetic_ip}",
         controles_normativos=["CIS-IOS-1.1.1"],
         diagnostico_tecnico=f"Telnet abierto en {synthetic_ip}",
         como_mejora_la_red="Cierra acceso en texto plano",

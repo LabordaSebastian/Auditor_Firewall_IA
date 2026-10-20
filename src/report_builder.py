@@ -127,6 +127,32 @@ class ReportBuilder:
                 f"* **Regla Afectada:** `{h.linea_o_regla_afectada}`",
                 f"* **Severidad:** `{h.severidad.value}` | **Impacto Operativo:** `{h.nivel_impacto_operativo.value}`",
                 "",
+            ])
+
+            # Desglose visual de reglas
+            if h.desglose_visual:
+                titulo_tabla = "📊 Comparativa y Colisión de Reglas:" if len(h.desglose_visual) > 1 else "📊 Desglose de la Regla Afectada:"
+                lines.extend([
+                    f"#### {titulo_tabla}",
+                    "| Rol de la Regla | Línea | Acción | Protocolo | Origen | Destino | Puerto | Estado del Flujo |",
+                    "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |",
+                ])
+                for r_vis in h.desglose_visual:
+                    accion_badge = f"🟢 `{r_vis.accion.upper()}`" if "permit" in r_vis.accion.lower() else f"🔴 `{r_vis.accion.upper()}`"
+                    lines.append(
+                        f"| **{r_vis.rol}** | `{r_vis.secuencia}` | {accion_badge} | `{r_vis.protocolo}` | "
+                        f"`{r_vis.origen}` | `{r_vis.destino}` | `{r_vis.puerto}` | {r_vis.estado_flujo} |"
+                    )
+                lines.append("")
+
+            # Alerta destacando el punto crítico del choque
+            if h.punto_critico_error:
+                lines.extend([
+                    f"> ⚠️ **Punto Crítico del Error:** {h.punto_critico_error}",
+                    "",
+                ])
+
+            lines.extend([
                 "**Controles Normativos Incumplidos (Estándares de Seguridad):**",
             ])
 
