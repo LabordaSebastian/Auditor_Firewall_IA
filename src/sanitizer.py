@@ -129,6 +129,65 @@ class ConfigSanitizer:
         return result
 
     @staticmethod
+    def _mask_secret(value: str) -> str:
+        """Enmascara un secreto para mostrarlo en UI sin exponerlo (RNF-01)."""
+        if len(value) <= 4:
+            return "***"
+        return f"{value[:2]}***{value[-1:]}"
+
+    @classmethod
+    def build_sanitization_view(
+        cls, raw_config: str, sanitized_config: str, lookup_map: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Construye la vista transparente de reemplazos (MEJ-05): tabla de mapeo y diff
+        línea a línea Original vs. Sanitizado. Los secretos NUNCA se devuelven en claro:
+        se muestran enmascarados (ej. 'ci***r').
+        """
+        ip_map: Dict[str, str] = lookup_map.get("ip_mappings", {})  # sintética -> real
+        secret_map: Dict[str, str] = lookup_map.get("secret_mappings", {})  # token -> real
+
+        raw_lines = raw_config.splitlines()
+        san_lines = sanitized_config.splitlines()
+
+        replacements: List[Dict[str, Any]] = []
+        for synth, real in ip_map.items():
+            replacements.append({
+                "tipo": "IP Pública WAN",
+                "categoria": "ip",
+                "original": real,
+                "reemplazo": synth,
+                "ocurrencias": len(re.findall(r"\b" + re.escape(real) + r"\b", raw_config)),
+            })
+        for token, secret in secret_map.items():
+            replacements.append({
+                "tipo": "Secreto Cisco (" + token.strip("<>").split("_", 1)[-1].rsplit("_", 1)[0] + ")",
+                "categoria": "secreto",
+                "original": cls._mask_secret(secret),
+                "reemplazo": token,
+                "ocurrencias": raw_config.count(secret),
+            })
+
+        diff: List[Dict[str, Any]] = []
+        for idx, (raw_line, san_line) in enumerate(zip(raw_lines, san_lines), start=1):
+            if raw_line == san_line:
+                continue
+            shown_raw = raw_line
+            for secret in secret_map.values():
+                shown_raw = shown_raw.replace(secret, cls._mask_secret(secret))
+            diff.append({"linea": idx, "original": shown_raw, "sanitizado": san_line})
+
+        return {
+            "total_ips": len(ip_map),
+            "total_secretos": len(secret_map),
+            "total_lineas": len(raw_lines),
+            "lineas_modificadas": len(diff),
+            "reemplazos": replacements,
+            "diff": diff,
+        }
+
+
+    @staticmethod
     def save_lookup_map(lookup_map: Dict[str, Any], filepath: Path) -> None:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:

@@ -217,5 +217,35 @@ def audit(
     )
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Interfaz de escucha (por defecto solo local)"),
+    port: int = typer.Option(8000, "--port", help="Puerto del dashboard"),
+    open_browser: bool = typer.Option(False, "--open-browser", help="Abrir el navegador automáticamente"),
+):
+    """Lanza el dashboard web interactivo (grafo topológico, simulador Batfish, PDF)."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    url = f"http://{host}:{port}"
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Dashboard Cisco AI Firewall Auditor[/bold cyan]\n"
+            f"[dim]URL:[/dim] [bold green]{url}[/bold green]\n"
+            f"[dim]Batfish:[/dim] {BATFISH_HOST}:{BATFISH_PORT}   [dim]Modelo:[/dim] {GEMINI_MODEL}\n"
+            f"[dim]Detener con Ctrl+C[/dim]",
+            border_style="cyan",
+        )
+    )
+    if host not in {"127.0.0.1", "localhost"}:
+        console.print("[bold yellow]⚠️ El dashboard no tiene autenticación: no lo expongas fuera de redes de confianza.[/bold yellow]")
+    if open_browser:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    uvicorn.run("src.web.app:app", host=host, port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()
+

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cisco AI Firewall Auditor — Dashboard Digital Twin con Batfish</title>
+  <meta name="description" content="Dashboard interactivo para auditar firewalls Cisco: topología viva, simulador de paquetes con Batfish, matriz de aislamiento y reportes PDF.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo" aria-hidden="true">🛡️</div>
+      <div>
+        <h1>Cisco AI Firewall Auditor</h1>
+        <p>Digital Twin formal con Batfish · Razonamiento con Gemini</p>
+      </div>
+    </div>
+    <div class="pills" role="status" aria-live="polite">
+      <span class="pill"><span class="dot" id="dotBatfish"></span><span id="txtBatfish">Batfish…</span></span>
+      <span class="pill"><span class="dot" id="dotGemini"></span><span id="txtGemini">Gemini…</span></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ================= CARGA ================= -->
+    <section id="uploadSection" class="card" aria-labelledby="uploadTitle">
+      <h2 id="uploadTitle">📥 Nueva auditoría</h2>
+      <div class="upload-grid">
+        <div>
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Soltar archivo de configuración">
+            <div class="big">📄</div>
+            <p><b>Arrastra tu archivo <code>.cfg</code> aquí</b> o haz clic para seleccionarlo</p>
+            <small>Cisco IOS / IOS-XE / ASA · máx. 2 MB</small>
+            <input type="file" id="fileInput" accept=".cfg,.txt,.conf" hidden>
+          </div>
+          <div class="btn-row" style="margin-top:14px" id="demoButtons"></div>
+        </div>
+        <div>
+          <div class="switch-row">
+            <div><b>🔒 Sanitización Zero-Leak</b><span>IPs públicas → RFC 5737 y secretos → tokens, antes de enviar a Gemini.</span></div>
+            <label class="toggle"><input type="checkbox" id="optSanitize" checked aria-label="Activar sanitización"><span class="slider"></span></label>
+          </div>
+          <div style="padding:6px 0 4px"><span class="badge-zero" id="sanBadge">● Protección Zero-Leak activa</span></div>
+          <div class="switch-row">
+            <div><b>🧠 Análisis con Gemini</b><span>Si lo desactivas, solo se ejecuta el análisis formal de Batfish.</span></div>
+            <label class="toggle"><input type="checkbox" id="optAI" checked aria-label="Activar análisis con Gemini"><span class="slider"></span></label>
+          </div>
+        </div>
+      </div>
+      <div class="stages" id="stages">
+        <span class="stage">1 · Sanitización</span><span class="stage">2 · Topología</span>
+        <span class="stage">3 · Batfish formal</span><span class="stage">4 · Gemini</span>
+      </div>
+      <div id="uploadMsg"></div>
+    </section>
+
+    <!-- ================= RESULTADOS ================= -->
+    <div id="results">
+
+      <section class="section hero" aria-label="Resumen de postura">
+        <article class="card device">
+          <h2 id="hostName">—</h2>
+          <p class="meta" id="hostMeta"></p>
+          <div class="btn-row">
+            <button class="btn primary" id="btnSanView">🔍 Ver reemplazos de sanitización</button>
+            <button class="btn" id="btnPdf">📄 Informe PDF</button>
+            <button class="btn" id="btnMd">📝 Markdown</button>
+            <button class="btn" id="btnRem">🛠️ Remediación .cli</button>
+            <button class="btn" id="btnRoll">⏪ Rollback .cli</button>
+            <button class="btn" onclick="window.print()">🖨️ Imprimir</button>
+          </div>
+          <p class="summary-text" id="execSummary"></p>
+        </article>
+        <article class="card gauge" id="gaugeNow"></article>
+        <article class="card gauge" id="gaugeProj"></article>
+      </section>
+
+      <section class="section" aria-labelledby="riskTitle">
+        <h2 class="section-title" id="riskTitle">🍩 Distribución gráfica de riesgo</h2>
+        <div class="grid-2">
+          <article class="card"><h2>Matriz de hallazgos por severidad</h2><div class="donut-card" id="donutSev"></div></article>
+          <article class="card"><h2>Taxonomía por tipo de vulnerabilidad</h2><div class="donut-card" id="donutCat"></div></article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="bfTitle">
+        <h2 class="section-title" id="bfTitle">⚡ Herramientas Batfish (Digital Twin)</h2>
+        <div class="card toolbar">
+          <button class="btn" id="btnShadow">🔍 Detectar reglas pisadas (Shadowing)</button>
+          <button class="btn" id="btnExposure">🛡️ Escanear puertos críticos expuestos</button>
+          <button class="btn" id="btnDiffA">🔀 Digital Twin diferencial · Plan A</button>
+          <button class="btn" id="btnDiffB">🔀 Digital Twin diferencial · Plan B</button>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="topoTitle">
+        <h2 class="section-title" id="topoTitle">🌐 Grafo topológico interactivo</h2>
+        <div class="topo-layout">
+          <div>
+            <div class="canvas-wrap">
+              <canvas id="topoCanvas" aria-label="Grafo topológico de la red"></canvas>
+              <div class="canvas-legend">
+                <span><i style="background:var(--crit)"></i>WAN / Internet</span>
+                <span><i style="background:var(--accent-2)"></i>Firewall / Router</span>
+                <span><i style="background:var(--med)"></i>DMZ</span>
+                <span><i style="background:var(--ok)"></i>LAN interna</span>
+                <span><i style="background:var(--violet)"></i>Gestión</span>
+              </div>
+              <div class="canvas-hint">Arrastra nodos · rueda = zoom · arrastra el fondo = mover · clic = ficha técnica</div>
+            </div>
+            <div class="drawer" id="drawer"><span class="empty">Selecciona un nodo o enlace para ver su ficha técnica.</span></div>
+          </div>
+          <div>
+            <article class="card">
+              <h2>🚀 Camino del paquete</h2>
+              <div class="form-grid">
+                <label class="field">Zona de origen<select id="simSrcZone"></select></label>
+                <label class="field">IP origen<input type="text" id="simSrcIp"></label>
+                <label class="field">Zona destino<select id="simDstZone"></select></label>
+                <label class="field">IP destino<input type="text" id="simDstIp"></label>
+                <label class="field">Servicio
+                  <select id="simService">
+                    <option value="TCP:443">HTTPS · TCP 443</option><option value="TCP:80">HTTP · TCP 80</option>
+                    <option value="TCP:23">Telnet · TCP 23</option><option value="TCP:22">SSH · TCP 22</option>
+                    <option value="TCP:3389">RDP · TCP 3389</option><option value="TCP:445">SMB · TCP 445</option>
+                    <option value="UDP:161">SNMP · UDP 161</option><option value="ICMP:">ICMP · Ping</option>
+                  </select>
+                </label>
+                <label class="field">Puerto personalizado<input type="number" id="simPort" min="1" max="65535" placeholder="opcional"></label>
+              </div>
+              <button class="btn primary" id="btnSim">🚀 Simular tráfico en Digital Twin</button>
+              <div class="sim-result" id="simResult"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="matTitle">
+        <h2 class="section-title" id="matTitle">🧱 Matriz de aislamiento y perímetros</h2>
+        <article class="card">
+          <div class="btn-row" style="margin-bottom:14px">
+            <button class="btn primary" id="btnMatrix">▶ Calcular matriz con Batfish</button>
+            <span class="meta" style="align-self:center">🟢 Aislado · 🟡 Restringido · 🔵 Permitido · 🔴 Fuga perimétrica (puertos críticos desde zona menos confiable)</span>
+          </div>
+          <div id="matrixOut"><span class="empty">Pulsa el botón para evaluar la segmentación entre zonas.</span></div>
+        </article>
+      </section>
+
+      <section class="section" aria-labelledby="findTitle">
+        <h2 class="section-title" id="findTitle">📋 Hallazgos y planes de decisión</h2>
+        <div id="aiNotice"></div>
+        <div class="chips" id="filters"></div>
+        <div id="findings"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div class="modal-head"><h2 id="modalTitle"></h2><button class="btn sm" id="modalClose">✕ Cerrar</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

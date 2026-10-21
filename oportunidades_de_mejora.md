@@ -13,7 +13,7 @@
 | **MEJ-02** | Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi) | Bajo | Alto | **P1 (Crítica)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-04** | Parser Avanzado de Objetos y NAT en Cisco ASA (8.3+) | Medio | Alto | **P2 (Alta)** |
-| **MEJ-05** | Dashboard Web Interactivo y Reportes en PDF | Medio | Alto | **P3 (Media)** |
+| **MEJ-05** | Dashboard Web Interactivo y Reportes en PDF | Medio | Alto | ✅ **Completada** |
 | **MEJ-06** | Integración CI/CD y NetDevOps (GitHub Actions / GitLab CI) | Bajo | Medio | **P3 (Media)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P4 (Evolutiva)** |
 | **MEJ-08** | Optimización de Inferencia y Context Caching en Gemini | Bajo | Medio | **P4 (Evolutiva)** |
@@ -64,14 +64,28 @@
 
 ---
 
-### 5. Dashboard Web Moderno y Exportación a PDF
+### 5. Dashboard Web Moderno y Exportación a PDF (MEJ-05) `[IMPLEMENTADO]`
+* **Estado:** ✅ **Completado e Implementado (Octubre 2026)** — Ver [RF-07](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md), [RF-08](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md), [RF-09](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md) y [ADR-004](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md).
 * **Contexto:** La CLI con `Rich` es excelente para ingenieros de redes, pero los auditores de seguridad corporativa y gerentes C-Level prefieren reportes gráficos y ejecutivos.
-* **Mejora:**
-  1. Desarrollar una interfaz web interactiva (FastAPI + frontend con estética moderna dark-mode/glassmorphism):
-     * Carga de archivos `.cfg` por drag-and-drop.
-     * Gráfico de radar / medidor de postura de seguridad actual vs. proyectada (ej. `32/100` ➔ `92/100`).
-     * Selector interactivo para alternar entre **Plan A** y **Plan B** con previsualización del diff.
-  2. Generador de reportes en PDF con diseño corporativo listo para entregar a clientes o comités de auditoría.
+* **Componentes Entregados:**
+  1. **Plataforma Web Reactiva y Dark Mode Glassmorphism (`src/web/`):**
+     * Backend REST sobre FastAPI (`src/web/app.py`, `src/web/routes.py`, `src/web/service.py`).
+     * Subida de `.cfg` por drag-and-drop y demos pre-cargadas de Cisco IOS y ASA.
+     * Switch de **Sanitización Reversible Zero-Leak** (opcional, activado por defecto) con modal de mapeo biunívoco y visor diff sintáctico en tiempo real.
+     * Indicadores de **Postura de Seguridad** (SVG Gauges circulares: Actual vs. Proyectada).
+     * **Distribución Gráfica de Riesgo:** Gráficos vectoriales Donut SVG de Severidad y Taxonomía con filtrado interactivo.
+     * Explorador de hallazgos con visualización tabular de colisiones y selector **Plan A vs Plan B** con diff de comandos.
+  2. **Grafo Topológico Interactivo y Digital Twin Batfish:**
+     * Lienzo interactivo en Canvas con motor de física elástica en JavaScript puro (60 FPS, repulsión coulombiana, resortes, zoom y pan).
+     * Deducción autónoma de zonas de seguridad (WAN, DMZ, LAN, Gestión) e interfaces.
+     * **Simulador "El Camino del Paquete" (`bf.q.traceroute`):** Animación de partículas de tráfico en vivo con detección de reglas de bloqueo u omisión.
+     * **Matriz de Aislamiento y Perímetros (Cross-Zone Matrix):** Verificación de fugas perimétricas con Batfish.
+     * **Digital Twin Diferencial (`bf.q.compareFilters`):** Certificación matemática de cambios de flujo con fallback por hallazgo.
+  3. **Exportación Corporativa en PDF (`src/pdf_generator.py`):**
+     * Generador de PDF en Python puro con `fpdf2` (portada institucional, métricas, donuts vectoriales, fichas de hallazgos y scripts CLI).
+     * Hoja de estilos de impresión `@media print` para exportación nativa de alta fidelidad.
+  4. **Comando CLI Integrado:** `python -m src.cli serve --host 127.0.0.1 --port 8000 [--open-browser]`.
+
 
 ---
 

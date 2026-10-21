@@ -102,6 +102,7 @@ class ContextoInterfaz(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
     ip_address: Optional[str] = None
+    mascara: Optional[str] = None
     security_level: Optional[int] = None  # Para Cisco ASA
     acl_in: Optional[str] = None
     acl_out: Optional[str] = None

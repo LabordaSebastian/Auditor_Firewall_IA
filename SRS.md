@@ -130,6 +130,25 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-06.2:** Exportar archivos independientes `.cli` (`remediacion_<nombre>.cli` y `rollback_<nombre>.cli`) con sintaxis válida de modo configuración de Cisco (`configure terminal`, números de secuencia de ACL o recreación ordenada de ACEs, y `end` / `write memory` comentados por seguridad).
 * **RF-06.3:** Incluir en el repositorio un archivo de configuración de laboratorio (`snapshots/lab_cisco_vuln/configs/fw-borde-cisco.cfg`) con **al menos 7 vulnerabilidades representativas inyectadas** (Shadowed rule, Permit sobre Deny, Telnet/23 expuesto en WAN, `remark` temporal vencido de proveedor, `permit ip any any` interno sin segmentación, falta de `deny ip any any log` explícito, y VTY sin `access-class` o con Telnet habilitado) para pruebas inmediatas y demostración en GitHub.
 
+### RF-07: Dashboard Web Interactivo y API REST (`src/web/` + `src.cli serve`) `[MEJ-05]`
+* **RF-07.1:** Exponer una API REST construida sobre **FastAPI** (`src/web/app.py`, `src/web/routes.py`) con endpoints para diagnóstico del sistema (`/api/status`), auditoría en vivo con subida de archivo `.cfg` (`/api/audit`), carga instantánea de demos de laboratorio (`/api/demo/{sample_id}`), sesiones en memoria (`/api/session/{id}`) y descarga de entregables (`.pdf`, `.md`, `.cli`).
+* **RF-07.2:** Proveer una interfaz gráfica moderna en Vanilla HTML5/CSS/JS (Dark Mode + Glassmorphism, Google Fonts `Outfit` y `JetBrains Mono`) servida estáticamente sin dependencias de Node.js o npm.
+* **RF-07.3:** Proveer un switch interactivo de Sanitización Reversible Zero-Leak (RFC 5737 y secretos) habilitado por defecto (`Enabled = True`), con visualizador modal transparente de mapeo biunívoco y diff interactivo línea a línea (Original vs. Sanitizado).
+* **RF-07.4:** Integrar el comando de terminal `python -m src.cli serve [--host 127.0.0.1] [--port 8000] [--open-browser]` para iniciar el servidor uvicorn directamente desde la CLI de Typer.
+
+### RF-08: Grafo Topológico Interactivo y Digital Twin Batfish (`src/web/graph.py` + `src/batfish_analyzer.py`) `[MEJ-05]`
+* **RF-08.1:** Generar automáticamente un grafo topológico de red L3 con deducción de zonas de seguridad (WAN, DMZ, LAN, Gestión) e interfaces asociadas a partir de las configuraciones y tablas de Batfish.
+* **RF-08.2:** Implementar un lienzo interactivo en Canvas con motor de física elástica en JavaScript puro (repulsión coulombiana, resortes, zoom, pan, arrastre de nodos a 60 FPS) y drawer lateral de ficha técnica por nodo o enlace.
+* **RF-08.3 (El Camino del Paquete):** Permitir simulación visual de tráfico en tiempo real mediante `bf.q.traceroute()` y `bf.q.testFilters()` con animación de partículas lumínicas sobre los enlaces, onda expansiva de colisión y banner indicando la regla exacta que permitió o bloqueó el flujo.
+* **RF-08.4:** Proveer una Matriz de Aislamiento y Perímetros (Cross-Zone Matrix) que evalúe alcanzabilidad con Batfish e identifique fugas perimétricas hacia servicios críticos.
+* **RF-08.5:** Proveer verificación diferencial Digital Twin (`compareFilters`) comparando la configuración actual contra el Plan A o Plan B, con fallback por hallazgo para cambios en plano de gestión (VTY).
+
+### RF-09: Distribución Gráfica de Riesgo y Exportación PDF Corporativa (`src/pdf_generator.py`) `[MEJ-05]`
+* **RF-09.1:** Renderizar en el dashboard dos gráficos vectoriales Donut SVG: **Matriz de Hallazgos por Severidad** y **Taxonomía por Tipo de Vulnerabilidad**, con centro oscuro totalizador, porcentajes calculados dinámicamente y filtrado interactivo al hover o clic.
+* **RF-09.2:** Generar reportes ejecutivos en PDF de diseño corporativo formal listos para entrega C-Level utilizando **`fpdf2`** (Python puro, sin dependencias nativas de SO), incluyendo portada institucional, posturas de seguridad actual vs. proyectada, gráficos donut vectoriales, topología y fichas completas de hallazgos con scripts CLI.
+* **RF-09.3:** Proveer hoja de estilos `@media print` para exportación directa de alta fidelidad desde el navegador web.
+
+
 ---
 
 ## 5. Requisitos No Funcionales
@@ -306,3 +325,16 @@ cisco-ai-firewall-auditor/
   2. Instruir al modelo Gemini para generar comparativas de 2 filas en conflictos (*Regla Superior (Bloqueadora)* vs *Regla Inferior (Oculta/Tapada)*) o de 1 fila en reglas individuales vulnerables, junto con un resumen de punto crítico.
   3. Renderizar en [report_builder.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/report_builder.py) una tabla visual Markdown con insignias de color (🟢 `PERMIT`, 🔴 `DENY`) y un bloque destacado de alerta (`> ⚠️ Punto Crítico del Error`).
 * **Impacto:** Comprensión visual inmediata del choque de reglas (*Top-Down* de Cisco) para administradores y auditores, manteniendo la de-sanitización automática de IPs y la compatibilidad con el JSON estructurado.
+
+### ADR-004 (2026-10-21): Dashboard Web Interactivo, Grafo Digital Twin, Sanitización Transparente y PDF FPDF2 (MEJ-05)
+* **Estado:** Aprobado e Implementado.
+* **Contexto:** La CLI basada en `Rich` es óptima para operadores de terminal, pero gerentes de seguridad C-Level y auditores corporativos requieren explorar la topología de red visualmente, entender colisiones, simular tráfico en tiempo real y exportar informes PDF imprimibles. Asimismo, se requería total transparencia sobre qué información es enmascarada antes de interactuar con la IA.
+* **Decisión Técnica:**
+  1. **Backend REST:** Adopción de **FastAPI** + **Uvicorn** (`src/web/`), acoplado a la CLI mediante `python -m src.cli serve`.
+  2. **Frontend Ligero Sin Build:** Vanilla HTML5, CSS Glassmorphism Dark Mode (tokens HSL, `backdrop-filter`, fuentes `Outfit` y `JetBrains Mono`) y JavaScript puro a 60 FPS, eliminando complejidad de toolchains de npm.
+  3. **Grafo Topológico Interactivo con Física Elástica:** Representación con Canvas y algoritmo force-directed de repulsión/resortes, clasificación automática de zonas de seguridad (WAN, DMZ, LAN, Gestión) y drawer de ficha técnica contextual al clic.
+  4. **Simulador "El Camino del Paquete":** Integración directa con `bf.q.traceroute()` y `bf.q.testFilters()` con animación sobre el grafo e indicación exacta de reglas de descarte.
+  5. **Sanitización Opcional y Transparente:** Switch por defecto activo (`Enabled = True`), modal de mapeo biunívoco y visor diff sintáctico en tiempo real (Original vs. Sanitizado).
+  6. **Distribución Gráfica de Riesgo:** Donut Charts vectoriales SVG de Severidad y Taxonomía con centro totalizador y filtrado interactivo.
+  7. **Generador PDF Corporativo:** Implementación con **`fpdf2`** (Python puro, sin dependencias nativas de Cairo/Pango) complementada con estilos `@media print`.
+* **Impacto:** Interfaz unificada de grado telecomunicaciones que transforma la suite en un Digital Twin interactivo accesible para operadores y comités ejecutivos.

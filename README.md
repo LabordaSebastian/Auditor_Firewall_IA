@@ -91,11 +91,27 @@ Observa qué IPs públicas y secretos se enmascararán antes de enviarse a la nu
 python -m src.cli sanitize-preview snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg
 ```
 
-### Ejecutar Auditoría Completa
+### Ejecutar Auditoría Completa en CLI
 Audita un router o firewall Cisco con el pipeline completo (Batfish formal + Gemini):
 ```bash
 python -m src.cli audit snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg
 ```
+
+### Iniciar el Dashboard Web Interactivo (MEJ-05)
+Lanza la plataforma web en modo oscuro con estética *Glassmorphism*, grafo topológico vivo y simulador en tiempo real:
+```bash
+python -m src.cli serve --host 127.0.0.1 --port 8000 --open-browser
+```
+Accede desde tu navegador a `http://127.0.0.1:8000`:
+* **Carga de Configuraciones:** Arrastra archivos `.cfg` o carga demos de un clic para Cisco IOS y ASA.
+* **Sanitización Transparente:** Switch Zero-Leak (activo por defecto) con visor de diferencias (Original vs. Sanitizado).
+* **Distribución Gráfica de Riesgo:** Gráficos vectoriales Donut SVG de Severidad y Taxonomía con filtrado interactivo.
+* **Grafo Topológico con Física Elástica:** Explora interfaces y zonas de seguridad arrastrando nodos con física reactiva a 60 FPS.
+* **Simulador "El Camino del Paquete":** Ejecuta `bf.q.traceroute()` en vivo y observa la animación del paquete con identificación de reglas de bloqueo.
+* **Matriz de Aislamiento y Perímetros:** Evaluación visual de segmentación Zero Trust entre zonas.
+* **Digital Twin Diferencial (`compareFilters`):** Compara el impacto del Plan A o Plan B antes de tocar producción.
+* **Exportación en un Clic:** Descarga informes en **PDF corporativo**, Markdown o scripts `.cli` de remediación/rollback.
+
 
 ---
 

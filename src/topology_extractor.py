@@ -60,9 +60,10 @@ class CiscoTopologyExtractor:
                     if m_sec:
                         interfaces[curr_iface].security_level = int(m_sec.group(1))
                     # ip address
-                    m_ip = re.match(r"^\s*ip\s+address\s+(\d+\.\d+\.\d+\.\d+)", line, re.IGNORECASE)
+                    m_ip = re.match(r"^\s*ip\s+address\s+(\d+\.\d+\.\d+\.\d+)(?:\s+(\d+\.\d+\.\d+\.\d+))?", line, re.IGNORECASE)
                     if m_ip:
                         interfaces[curr_iface].ip_address = m_ip.group(1)
+                        interfaces[curr_iface].mascara = m_ip.group(2)
 
             # En ASA, access-group se asocia por nombre de interfaz: access-group ACL in interface outside
             for line in self.lines:
@@ -88,9 +89,10 @@ class CiscoTopologyExtractor:
                     m_desc = re.match(r"^description\s+(.*)", ctext, re.IGNORECASE)
                     if m_desc:
                         ctx.descripcion = m_desc.group(1)
-                    m_ip = re.match(r"^ip\s+address\s+(\d+\.\d+\.\d+\.\d+)", ctext, re.IGNORECASE)
+                    m_ip = re.match(r"^ip\s+address\s+(\d+\.\d+\.\d+\.\d+)(?:\s+(\d+\.\d+\.\d+\.\d+))?", ctext, re.IGNORECASE)
                     if m_ip:
                         ctx.ip_address = m_ip.group(1)
+                        ctx.mascara = m_ip.group(2)
                     m_acl_in = re.match(r"^ip\s+access-group\s+(\S+)\s+in", ctext, re.IGNORECASE)
                     if m_acl_in:
                         ctx.acl_in = m_acl_in.group(1)
