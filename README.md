@@ -123,6 +123,13 @@ Por cada auditoría ejecutada, el sistema genera automáticamente:
 3. `reports/rollback_<nombre>.cli`: Script de marcha atrás para revertir los cambios en segundos si ocurre una contingencia.
 4. `reports/auditoria_<nombre>.json`: Estructura de datos completa para integración con SIEM o pipelines DevNet/CI-CD.
 
+
+---
+
+## 📚 Documentación Técnica Adicional
+
+* **[Manual Práctico y Referencia Formal de Batfish](docs/manual_practico_batfish.md):** Guía completa paso a paso, tabla de consultas (`routes`, `traceroute`, `reachability`, `filterLineReachability`) y laboratorio interactivo para dominar la verificación formal de redes.
+
 ---
 
 ## 🧪 Pruebas Automatizadas
