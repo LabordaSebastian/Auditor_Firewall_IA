@@ -155,6 +155,14 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-10.4 (Control de Calidad de Sintaxis con Batfish `initIssues`):** Integrar `bf.q.initIssues()` para validar la sintaxis de la configuración antes de auditar, alertando sobre comandos no soportados o líneas no reconocidas con marcado visual en violeta en el visor.
 * **RF-10.5 (Paridad Web y CLI):** Proveer el comando CLI `python -m src.cli preview <archivo.cfg>` y el flag interactivo `python -m src.cli audit <archivo.cfg> --preview` para inspección previa y confirmación explícita previa a la ejecución.
 
+### RF-11: Digital Twin Robusto y Reachability Simbólica (`src/batfish_analyzer.py` + `src/web/`) `[Fase 2]`
+* **RF-11.1 (Resolución Multi-Dialecto de Interfaces):** Toda consulta Batfish con ubicación de inicio (`traceroute`, `reachability`, matriz de aislamiento) debe traducir el nombre de interfaz de la configuración al nombre modelado por Batfish, por coincidencia exacta o, en su defecto, por IP primaria (`interfaceProperties`). En Cisco ASA Batfish nombra las interfaces por `nameif` (`outside`, `inside`, `dmz`); su omisión provocaba HTTP 500 en el simulador y celdas `DESCONOCIDO` en la matriz.
+* **RF-11.2 (Errores Formales Controlados):** Las excepciones de consulta de Batfish (`BatfishException`) deben devolverse como HTTP 502 con la causa raíz legible, nunca como HTTP 500 opaco.
+* **RF-11.3 (Reachability Simbólica — `bf.q.reachability`):** Endpoint `POST /api/session/{id}/reachability` que, desde una zona de origen, evalúa cada combinación destino × servicio (zona, todas las zonas `*` o IP/CIDR; puertos y rangos, máx. 10 por consulta y 40 combinaciones) sobre el espacio completo de paquetes. "Inalcanzable" constituye prueba formal; "alcanzable" incluye un flujo testigo y la ACL decisiva.
+* **RF-11.4 (Prueba de Filtro Aislado — `bf.q.testFilters`):** Endpoint `POST /api/session/{id}/testfilter` que evalúa un paquete hipotético contra una ACL concreta (validada contra las ACLs de la sesión) y devuelve acción y línea exacta, traduciendo `no-match` a *deny implícito*.
+* **RF-11.5 (Modelo de Red — `bf.q.routes` + `bf.q.layer3Edges`):** Endpoint `GET /api/session/{id}/model` con tabla de enrutamiento, adyacencias L3 e inventario de interfaces tal como Batfish los interpreta (cacheado por sesión).
+* **RF-11.6 (Zero-Leak en Consultas Interactivas):** Las IPs reales ingresadas por el usuario se re-sanitizan antes de llegar a Batfish y todas las respuestas se de-sanitizan localmente.
+
 ---
 
 ## 5. Requisitos No Funcionales
@@ -276,7 +284,7 @@ cisco-ai-firewall-auditor/
 │   ├── models.py                       # Modelos Pydantic (ReporteAuditoriaFirewall, HallazgoFirewall, etc.)
 │   ├── sanitizer.py                    # Sanitización reversible de IPs públicas (RFC 5737) y secretos
 │   ├── topology_extractor.py           # Parser con ciscoconfparse2 (Interfaces, ACLs, Remarks, Huérfanas)
-│   ├── batfish_analyzer.py             # Cliente pybatfish (filterLineReachability, searchFilters, compareFilters)
+│   ├── batfish_analyzer.py             # Cliente pybatfish (filterLineReachability, searchFilters, compareFilters, reachability, testFilters, routes, layer3Edges)
 │   ├── gemini_advisor.py               # Integración con google-genai, carga de Skill y validación Pydantic
 │   ├── report_builder.py               # De-sanitización local y renderizado de archivos .md, .json y .cli [Sugerido por la IA]
 │   └── cli.py                          # Punto de entrada con Typer y Rich (comandos: audit, sanitize-preview, check-env)
@@ -354,3 +362,14 @@ cisco-ai-firewall-auditor/
   3. **Guía Pedagógica de Laboratorios (`src/web/demo_guides.py`):** Catálogo estático curado para las demos Cisco IOS y ASA con anclaje interactivo a líneas de código que enfoca y destella las reglas en el visor al hacer clic.
   4. **Paridad Web y CLI:** Integración in-place en la pantalla principal del dashboard web (reemplazando temporalmente la dropzone con animación suave) y subcomando `python -m src.cli preview` más flag `--preview` en `audit` para confirmar antes de ejecutar.
 * **Impacto:** Cero ejecuciones accidentales, total transparencia sobre qué viaja a la nube sanitizado y ahorro sustancial de tokens y cómputo de verificación formal.
+
+### ADR-006 (2026-11-10): Digital Twin Robusto (Fix ASA `nameif`) y Reachability Simbólica
+* **Estado:** Aprobado e Implementado (`Fase 2`).
+* **Contexto:** En la demo Cisco ASA el simulador "Camino del Paquete" devolvía HTTP 500 (`Found no active locations matching @enter(asa-perimetral-corp[GigabitEthernet0/0])`) y la matriz de aislamiento marcaba todas las celdas como `DESCONOCIDO`. Causa raíz: Batfish modela las interfaces ASA por su `nameif` (`outside`, `inside`, `dmz`), mientras que el extractor de topología usa el nombre físico. Además, `BatfishException` no se capturaba en la capa REST. El dashboard tampoco exponía consultas simbólicas sobre todo el espacio de paquetes.
+* **Decisión Técnica:**
+  1. **Resolución de ubicación (`BatfishAnalyzer.resolve_location`):** coincidencia exacta de nombre y, si falla, por IP primaria vía `interfaceProperties`; la IP es invariante entre dialectos y ya existe en las zonas. Se descartó un mapeo heurístico `GigabitEthernet → nameif` en el extractor por no ser verificable formalmente.
+  2. **Guardia REST:** `BatfishException` → HTTP 502 con la causa raíz (`Caused by:`) en el detalle.
+  3. **Reachability simbólica:** una consulta `reachability(actions=SUCCESS)` por combinación destino × servicio para dar un veredicto binario y probatorio por celda, con tope de 40 consultas para acotar latencia.
+  4. **`testFilters` aislado y modelo de red (`routes`, `layer3Edges`, `interfaceProperties`):** expuestos en el dashboard (sección "Reachability simbólica y prueba de filtros" y botón "Modelo de red").
+  5. Los filtros sintéticos de Batfish (`~COMBINED_OUTGOING_ACL~…`) que solo permiten se excluyen al identificar la ACL decisiva.
+* **Impacto:** Paridad funcional IOS/ASA en todo el Digital Twin, cero HTTP 500 por consultas Batfish y verificación formal "∀ paquetes" accesible desde la interfaz web. Cubierto por `tests/test_reachability.py` (incluye regresión de extremo a extremo sobre la demo ASA con Batfish real).

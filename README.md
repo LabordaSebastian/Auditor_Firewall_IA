@@ -120,6 +120,8 @@ Accede desde tu navegador a `http://127.0.0.1:8000`:
 * **Simulador "El Camino del Paquete":** Ejecuta `bf.q.traceroute()` en vivo y observa la animación del paquete con identificación de reglas de bloqueo.
 * **Matriz de Aislamiento y Perímetros:** Evaluación visual de segmentación Zero Trust entre zonas.
 * **Digital Twin Diferencial (`compareFilters`):** Compara el impacto del Plan A o Plan B antes de tocar producción.
+* **Reachability Simbólica (`reachability`) y Prueba de ACL (`testFilters`) — Fase 2:** Verifica sobre *todo* el espacio de paquetes si algún flujo llega de una zona a otra por servicio, y evalúa un paquete hipotético contra una ACL aislada. Compatible con IOS y ASA (interfaces `nameif` resueltas automáticamente).
+* **Modelo de Red (`routes` · `layer3Edges`):** Tabla de enrutamiento, adyacencias L3 e interfaces tal como las interpreta Batfish.
 * **Exportación en un Clic:** Descarga informes en **PDF corporativo**, Markdown o scripts `.cli` de remediación/rollback.
 
 

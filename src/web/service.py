@@ -1,5 +1,6 @@
 """Servicio de orquestación del dashboard web (MEJ-05): sesiones de auditoría en memoria."""
 import difflib
+import ipaddress
 import json
 import re
 import threading
@@ -244,6 +245,7 @@ class AuditService:
             "distribucion": {"severidad": dict(sev), "categoria": dict(cat)},
             "matematicos": self.shadowing(s),
             "grafo": s.graph,
+            "acls": self.acl_names(s),
         }
 
     def shadowing(self, s: AuditSession) -> List[Dict[str, Any]]:
@@ -265,7 +267,8 @@ class AuditService:
         dst = self._resanitize(dst_ip, s.lookup_map)
         with self._bf_lock:
             result = self._analyzer().simulate_packet(
-                s.sanitized_config, s.filename, zone["interfaz"], src, dst, protocolo, puerto
+                s.sanitized_config, s.filename, zone["interfaz"], src, dst, protocolo, puerto,
+                start_ip=zone.get("ip"),
             )
         return self._deep_desanitize(result, s.lookup_map)
 
@@ -287,6 +290,104 @@ class AuditService:
                 rows = self._analyzer().scan_exposed_ports(s.sanitized_config, s.filename, wan_acls)
             s.cache["exposure"] = self._deep_desanitize(rows, s.lookup_map)
         return {"exposiciones": s.cache["exposure"]}
+
+    # ------------------------------------------------------------------ Fase 2: reachability simbólica
+    MAX_PORT_TOKENS = 10
+
+    @classmethod
+    def parse_ports(cls, spec: Optional[str]) -> List[str]:
+        """'22, 80-90,443' -> ['22', '80-90', '443'] validando rangos 1-65535."""
+        tokens: List[str] = []
+        for raw in (spec or "").replace(";", ",").split(","):
+            tok = raw.strip().replace(" ", "")
+            if not tok:
+                continue
+            m = re.fullmatch(r"(\d{1,5})(?:-(\d{1,5}))?", tok)
+            if not m:
+                raise ValueError(f"Puerto inválido: '{tok}'. Usa números o rangos (ej. 22,80-90).")
+            lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+            if not (1 <= lo <= hi <= 65535):
+                raise ValueError(f"Rango de puertos fuera de 1-65535: '{tok}'.")
+            if tok not in tokens:
+                tokens.append(tok)
+        if len(tokens) > cls.MAX_PORT_TOKENS:
+            raise ValueError(f"Máximo {cls.MAX_PORT_TOKENS} puertos/rangos por consulta.")
+        return tokens
+
+    @staticmethod
+    def _ip_space(value: str) -> str:
+        """Valida IP o CIDR (no se aceptan especificadores arbitrarios de Batfish)."""
+        try:
+            return str(ipaddress.ip_network(value.strip(), strict=False))
+        except ValueError:
+            raise ValueError(f"IP o subred inválida: '{value}'.")
+
+    def _zone(self, s: AuditSession, name: str) -> Dict[str, Any]:
+        zone = next((z for z in s.zones if z["nombre"] == name), None)
+        if not zone:
+            raise ValueError(f"Zona desconocida: {name}")
+        return zone
+
+    def reachability(self, s: AuditSession, zona_origen: str, destino: str, protocolo: Optional[str],
+                     puertos: Optional[str], src_ips: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Reachability simbólica (RF-11): `destino` es el nombre de una zona, '*' (todas las demás
+        zonas) o una IP/CIDR. Entradas reales se re-sanitizan antes de Batfish; la salida se
+        de-sanitiza para el usuario.
+        """
+        src_zone = self._zone(s, zona_origen)
+        proto = (protocolo or "").upper()
+        if proto in {"", "ANY", "CUALQUIERA"}:
+            proto = ""
+        elif proto not in {"TCP", "UDP", "ICMP"}:
+            raise ValueError(f"Protocolo no soportado: {protocolo}")
+        ports = self.parse_ports(puertos) if proto in {"TCP", "UDP"} else []
+
+        if destino == "*":
+            dests = [{"etiqueta": z["nombre"], "ips": z["subred"]} for z in s.zones if z["nombre"] != zona_origen]
+            if not dests:
+                raise ValueError("No hay otras zonas con subred para evaluar.")
+        elif any(z["nombre"] == destino for z in s.zones):
+            z = self._zone(s, destino)
+            dests = [{"etiqueta": z["nombre"], "ips": z["subred"]}]
+        else:
+            ips = self._ip_space(self._resanitize(destino, s.lookup_map))
+            dests = [{"etiqueta": destino.strip(), "ips": ips}]
+
+        if src_ips and src_ips.strip():
+            srcs: Optional[str] = self._ip_space(self._resanitize(src_ips, s.lookup_map))
+        else:  # zona interna: su propia subred (evita IPs falsificadas); WAN: cualquier origen
+            srcs = None if src_zone["zona"] == "WAN" else src_zone["subred"]
+
+        with self._bf_lock:
+            result = self._analyzer().symbolic_reachability(
+                s.sanitized_config, s.filename, src_zone["interfaz"], src_zone.get("ip"), dests,
+                src_ips=srcs, protocol=proto or None, port_specs=ports,
+            )
+        result["zona_origen"] = zona_origen
+        return self._deep_desanitize(result, s.lookup_map)
+
+    def acl_names(self, s: AuditSession) -> List[str]:
+        return sorted(set(s.topology.acls_activas) | set(s.topology.acls_huerfanas))
+
+    def test_filter(self, s: AuditSession, acl: str, src_ip: str, dst_ip: str,
+                    protocolo: str, puerto: Optional[int]) -> Dict[str, Any]:
+        """testFilters (RF-11): paquete hipotético contra una ACL aislada."""
+        if acl not in self.acl_names(s):
+            raise ValueError(f"ACL desconocida: {acl}")
+        src = self._ip_space(self._resanitize(src_ip, s.lookup_map)).split("/")[0]
+        dst = self._ip_space(self._resanitize(dst_ip, s.lookup_map)).split("/")[0]
+        with self._bf_lock:
+            result = self._analyzer().test_filter(s.sanitized_config, s.filename, acl, src, dst, protocolo, puerto)
+        return self._deep_desanitize(result, s.lookup_map)
+
+    def network_model(self, s: AuditSession) -> Dict[str, Any]:
+        """routes + layer3Edges + interfaceProperties (RF-11), cacheado por sesión."""
+        if "model" not in s.cache:
+            with self._bf_lock:
+                model = self._analyzer().network_model(s.sanitized_config, s.filename)
+            s.cache["model"] = self._deep_desanitize(model, s.lookup_map)
+        return s.cache["model"]
 
     def _compare_commands(self, s: AuditSession, commands: List[str]) -> Dict[str, Any]:
         """Aplica `commands` sobre la config sanitizada y compara con Batfish (compareFilters)."""

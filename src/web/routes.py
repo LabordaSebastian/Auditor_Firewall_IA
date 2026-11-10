@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response
+from pybatfish.exception import BatfishException
 from pydantic import BaseModel, Field
 
 from src.batfish_analyzer import BatfishUnavailableError
@@ -26,6 +27,25 @@ class DiffRequest(BaseModel):
     plan: str = Field("A", pattern="^[ABab]$")
 
 
+class ReachabilityRequest(BaseModel):
+    """Reachability simbólica (RF-11). `destino`: zona, '*' (todas) o IP/CIDR."""
+    zona_origen: str = Field(..., max_length=40)
+    destino: str = Field("*", max_length=64)
+    protocolo: str = Field("TCP", pattern="^(TCP|UDP|ICMP|ANY|tcp|udp|icmp|any)$")
+    puertos: Optional[str] = Field(None, max_length=80)
+    src_ips: Optional[str] = Field(None, max_length=64)
+
+
+class TestFilterRequest(BaseModel):
+    """testFilters (RF-11): paquete hipotético contra una ACL concreta."""
+    __test__ = False  # evita que pytest lo confunda con una clase de pruebas
+    acl: str = Field(..., max_length=120)
+    src_ip: str = Field(..., max_length=45)
+    dst_ip: str = Field(..., max_length=45)
+    protocolo: str = Field("TCP", pattern="^(TCP|UDP|ICMP|tcp|udp|icmp)$")
+    puerto: Optional[int] = Field(None, ge=1, le=65535)
+
+
 def _session(session_id: str):
     try:
         return service.get(session_id)
@@ -40,6 +60,10 @@ def _batfish_guard(fn):
         raise HTTPException(503, f"Batfish no disponible: {exc}. Ejecuta 'docker compose up -d'.")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except BatfishException as exc:  # consulta rechazada por Batfish: nunca un 500 opaco
+        causes = [ln.strip() for ln in str(exc).splitlines() if ln.strip().startswith("Caused by:")]
+        detail = (causes[-1].split(": ", 2)[-1] if causes else str(exc).splitlines()[0])[:240]
+        raise HTTPException(502, f"Batfish no pudo resolver la consulta: {detail}")
 
 
 @router.get("/status")
@@ -149,6 +173,31 @@ def traceroute(session_id: str, req: TracerouteRequest):
 def diff(session_id: str, req: DiffRequest):
     s = _session(session_id)
     return _batfish_guard(lambda: service.digital_twin_diff(s, req.plan))
+
+
+@router.post("/session/{session_id}/reachability")
+def reachability(session_id: str, req: ReachabilityRequest):
+    """Reachability simbólica sobre todo el espacio de paquetes (bf.q.reachability)."""
+    s = _session(session_id)
+    return _batfish_guard(
+        lambda: service.reachability(s, req.zona_origen, req.destino, req.protocolo, req.puertos, req.src_ips)
+    )
+
+
+@router.post("/session/{session_id}/testfilter")
+def testfilter(session_id: str, req: TestFilterRequest):
+    """Evalúa un paquete hipotético contra una ACL aislada (bf.q.testFilters)."""
+    s = _session(session_id)
+    return _batfish_guard(
+        lambda: service.test_filter(s, req.acl, req.src_ip, req.dst_ip, req.protocolo, req.puerto)
+    )
+
+
+@router.get("/session/{session_id}/model")
+def network_model(session_id: str):
+    """Modelo de red de Batfish: routes, layer3Edges e interfaces."""
+    s = _session(session_id)
+    return _batfish_guard(lambda: service.network_model(s))
 
 
 @router.get("/session/{session_id}/pdf")

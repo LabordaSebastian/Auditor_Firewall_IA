@@ -82,14 +82,15 @@ def test_traceroute_validation_and_desanitization(client, sample_report, monkeyp
     captured = {}
 
     class FakeAnalyzer:
-        def simulate_packet(self, cfg, fname, iface, src, dst, proto, port):
-            captured.update(dst=dst, iface=iface)
+        def simulate_packet(self, cfg, fname, iface, src, dst, proto, port, start_ip=None):
+            captured.update(dst=dst, iface=iface, start_ip=start_ip)
             return {"permitido": False, "disposicion": "DENIED_IN", "hops": [], "regla": f"deny host {synth}", "filtro_decisivo": None}
 
     monkeypatch.setattr(service, "_analyzer", lambda: FakeAnalyzer())
     ok = client.post("/api/session/sess1/traceroute", json={"zona_origen": "WAN", "src_ip": "8.8.8.8", "dst_ip": real, "protocolo": "TCP", "puerto": 23})
     assert ok.status_code == 200
     assert captured["dst"] == synth                    # entrada re-sanitizada hacia Batfish
+    assert captured["start_ip"] == next(z["ip"] for z in s.zones if z["nombre"] == "WAN")  # resolución nameif (Fase 2)
     assert real in ok.json()["regla"]                  # salida de-sanitizada hacia el usuario
     unknown = client.post("/api/session/sess1/traceroute", json={"zona_origen": "NOPE", "src_ip": "1.1.1.1", "dst_ip": "2.2.2.2", "protocolo": "TCP", "puerto": 80})
     assert unknown.status_code == 400

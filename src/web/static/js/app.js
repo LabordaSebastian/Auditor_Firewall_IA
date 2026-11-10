@@ -290,6 +290,7 @@ function render() {
   renderFindings();
   Topo.load(S.grafo);
   setupSim();
+  setupSymbolic();
   $('matrixOut').innerHTML = '<span class="empty">Pulsa el botón para evaluar la segmentación entre zonas.</span>';
   const hasReport = !!S.resumen;
   ['btnPdf', 'btnMd', 'btnRem', 'btnRoll', 'btnDiffA', 'btnDiffB'].forEach((id) => ($(id).disabled = !hasReport));
@@ -588,6 +589,90 @@ async function runSim() {
   } finally { $('btnSim').disabled = false; }
 }
 
+/* ---------------------------------------------------------------- Fase 2: Reachability simbólica · testFilters · modelo de red */
+function setupSymbolic() {
+  const zs = S.grafo.zonas;
+  const zoneOpts = zs.map((z) => `<option value="${esc(z.nombre)}">${esc(z.nombre)} · ${esc(z.subred)}</option>`).join('');
+  $('reachSrcZone').innerHTML = zoneOpts;
+  $('reachDst').innerHTML = '<option value="*">Todas las demás zonas</option>' + zoneOpts + '<option value="__custom">Personalizado (IP/CIDR)…</option>';
+  const wan = zs.find((z) => z.zona === 'WAN');
+  if (wan) $('reachSrcZone').value = wan.nombre;
+  $('reachDstCustom').value = ''; $('reachSrcIps').value = '';
+  $('reachOut').innerHTML = '';
+  $('tfAcl').innerHTML = (S.acls || []).map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join('') || '<option value="">(sin ACLs)</option>';
+  const dmz = zs.find((z) => z.zona === 'DMZ') || zs.find((z) => z !== wan);
+  $('tfDst').value = dmz ? hostIn(dmz.subred, 10) : '';
+  $('tfOut').className = 'sim-result';
+  $('btnReach').disabled = !zs.length; $('btnTf').disabled = !(S.acls || []).length;
+}
+
+async function runReachability() {
+  const sel = $('reachDst').value;
+  const proto = $('reachProto').value;
+  const body = {
+    zona_origen: $('reachSrcZone').value,
+    destino: sel === '__custom' ? $('reachDstCustom').value.trim() : sel,
+    protocolo: proto,
+    puertos: ['TCP', 'UDP'].includes(proto) ? $('reachPorts').value.trim() : null,
+    src_ips: $('reachSrcIps').value.trim() || null,
+  };
+  if (!body.destino) { toast('Indica una IP o subred destino.'); return; }
+  const out = $('reachOut');
+  out.innerHTML = '<div class="empty"><span class="spinner"></span><p style="margin-top:12px">Resolviendo el espacio simbólico de paquetes en Batfish…</p></div>';
+  $('btnReach').disabled = true;
+  try {
+    const d = await post(`/api/session/${S.id}/reachability`, body);
+    const rows = d.resultados.map((r) => `<tr>
+      <td><b>${esc(r.destino)}</b><br><span class="meta">${esc(r.destino_ips)}</span></td>
+      <td>${esc(r.protocolo)}${r.puertos && r.puertos !== '-' ? ' / ' + esc(r.puertos) : ''}</td>
+      <td class="${r.alcanzable ? 'deny' : 'permit'}">${r.alcanzable ? '⚠️ ALCANZABLE' : '🛡️ INALCANZABLE'}</td>
+      <td style="font-family:var(--mono);font-size:.74rem">${r.flujo ? esc(r.flujo.texto) : '<span class="meta">Ningún paquete posible (prueba formal)</span>'}</td>
+      <td style="font-family:var(--mono);font-size:.74rem">${r.filtro_decisivo ? `${esc(r.filtro_decisivo.filtro)} · ${esc(r.filtro_decisivo.accion)}` : (r.disposicion ? esc(r.disposicion) : '—')}</td></tr>`).join('');
+    out.innerHTML = `<div class="alert ${d.alcanzables ? 'warn' : 'ok'}" style="margin-bottom:10px">🔭 <b>${d.alcanzables}</b> de ${d.total_consultas} combinaciones destino×servicio son alcanzables desde <b>${esc(d.zona_origen)}</b>.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Destino</th><th>Servicio</th><th>Resultado</th><th>Flujo testigo</th><th>Filtro decisivo</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } catch (e) {
+    out.innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
+  } finally { $('btnReach').disabled = false; }
+}
+
+async function runTestFilter() {
+  const proto = $('tfProto').value;
+  const body = {
+    acl: $('tfAcl').value, src_ip: $('tfSrc').value.trim(), dst_ip: $('tfDst').value.trim(), protocolo: proto,
+    puerto: proto === 'ICMP' || !$('tfPort').value ? null : +$('tfPort').value,
+  };
+  const box = $('tfOut');
+  box.className = 'sim-result show';
+  box.innerHTML = '<span class="spinner"></span> Evaluando la ACL con testFilters…';
+  $('btnTf').disabled = true;
+  try {
+    const r = await post(`/api/session/${S.id}/testfilter`, body);
+    box.className = `sim-result show ${r.permitido ? 'ok' : 'bad'}`;
+    box.innerHTML = `<b>${r.permitido ? '✅ PERMIT' : '⛔ DENY'}</b> en <code>${esc(r.acl)}</code>
+      ${r.regla ? `<br>Línea que decide: <code>${esc(r.regla)}</code>` : ''}
+      ${r.flujo ? `<div class="hops">${esc(r.flujo.texto)}</div>` : ''}`;
+  } catch (e) {
+    box.className = 'sim-result show bad'; box.textContent = '❌ ' + e.message;
+  } finally { $('btnTf').disabled = false; }
+}
+
+const showModel = () => batfishModal('Modelo de red en Batfish (routes · layer3Edges · interfaces)', async () => {
+  const m = await api(`/api/session/${S.id}/model`);
+  const ifaces = `<table><thead><tr><th>Interfaz (Batfish)</th><th>Dirección</th><th>Estado</th><th>ACL in</th><th>ACL out</th><th>Descripción</th></tr></thead><tbody>${m.interfaces.map((i) => `
+    <tr><td style="font-family:var(--mono)">${esc(i.nodo)}[${esc(i.interfaz)}]</td><td style="font-family:var(--mono)">${esc(i.prefijo || '—')}</td>
+    <td class="${i.activa ? 'permit' : 'deny'}">${i.activa ? 'ACTIVA' : 'INACTIVA'}</td><td>${esc(i.acl_in || '—')}</td><td>${esc(i.acl_out || '—')}</td><td>${esc(i.descripcion || '—')}</td></tr>`).join('')}</tbody></table>`;
+  const routes = m.rutas.length ? `<table><thead><tr><th>Red</th><th>Next hop</th><th>Protocolo</th><th>AD</th><th>Métrica</th><th>VRF</th></tr></thead><tbody>${m.rutas.map((r) => `
+    <tr><td style="font-family:var(--mono)">${esc(r.red)}</td><td style="font-family:var(--mono);font-size:.78rem">${esc(r.next_hop)}</td><td><b>${esc(r.protocolo)}</b></td>
+    <td>${r.admin_distance ?? '—'}</td><td>${r.metrica ?? '—'}</td><td>${esc(r.vrf)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sin rutas en el modelo.</div>';
+  const edges = m.enlaces_l3.length ? `<table><thead><tr><th>Interfaz</th><th>IPs</th><th>Interfaz remota</th><th>IPs remotas</th></tr></thead><tbody>${m.enlaces_l3.map((e) => `
+    <tr><td>${esc(e.nodo)}[${esc(e.interfaz)}]</td><td>${esc(e.ips.join(', '))}</td><td>${esc(e.nodo_remoto)}[${esc(e.interfaz_remota)}]</td><td>${esc(e.ips_remotas.join(', '))}</td></tr>`).join('')}</tbody></table>` :
+    '<div class="alert warn">ℹ️ Snapshot de un único dispositivo: Batfish no deduce adyacencias L3 (layer3Edges vacío). Al cargar varios equipos, aquí aparecen los enlaces cara a cara.</div>';
+  return `<p class="meta">Así interpreta Batfish la configuración. En ASA las interfaces se modelan por su <code>nameif</code>; el Digital Twin las resuelve automáticamente.</p>
+    <p class="block-label">Interfaces modeladas (${m.interfaces.length})</p>${ifaces}
+    <p class="block-label">Tabla de enrutamiento · bf.q.routes() (${m.total_rutas})</p>${routes}
+    <p class="block-label">Adyacencias L3 · bf.q.layer3Edges() (${m.total_enlaces})</p>${edges}`;
+});
+
 /* ---------------------------------------------------------------- Grafo topológico con física elástica */
 const Topo = {
   cv: null, cx: null, nodes: [], links: [], byId: {}, scale: 1, ox: 0, oy: 0, drag: null, pan: null,
@@ -773,6 +858,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btnDiffA').addEventListener('click', () => showDiff('A'));
   $('btnDiffB').addEventListener('click', () => showDiff('B'));
   $('btnMatrix').addEventListener('click', loadMatrix);
+  $('btnModel').addEventListener('click', showModel);
+  $('btnReach').addEventListener('click', runReachability);
+  $('btnTf').addEventListener('click', runTestFilter);
+  $('reachDst').addEventListener('change', () => { if ($('reachDst').value === '__custom') $('reachDstCustom').focus(); });
   $('btnSim').addEventListener('click', runSim);
   $('simSrcZone').addEventListener('change', fillIps);
   $('simDstZone').addEventListener('change', fillIps);

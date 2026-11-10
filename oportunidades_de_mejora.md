@@ -10,8 +10,8 @@
 | ID / Fase | Área / Módulo | Nivel de Esfuerzo | Impacto Técnico | Estado / Prioridad |
 | :--- | :--- | :---: | :---: | :---: |
 | **Fase 1** | **Vista Previa Pre-Flight, Sintaxis (`initIssues`) y Guía de Demos** | Medio | Alto | ✅ **Completada e Implementada** |
-| **Fase 2** | **Digital Twin Robusto (Fix ASA 500) y Reachability Simbólica (`reachability`, `testFilters`, `routes`, `layer3Edges`)** | Medio | Muy Alto | **Siguiente (Fase 2)** |
-| **Fase 3** | **Priorización Top-Down, Centro de Decisiones What-If y Botón de Reset** | Medio | Muy Alto | **Planificada (Fase 3)** |
+| **Fase 2** | **Digital Twin Robusto (Fix ASA 500) y Reachability Simbólica (`reachability`, `testFilters`, `routes`, `layer3Edges`)** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-11 / ADR-006) |
+| **Fase 3** | **Priorización Top-Down, Centro de Decisiones What-If y Botón de Reset** | Medio | Muy Alto | **Siguiente (Fase 3)** |
 | **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Reportes** | Medio | Muy Alto | **Planificada (Fase 4)** |
 | **MEJ-02** | Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi) | Bajo | Alto | **P2 (Alta)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
