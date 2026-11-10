@@ -74,16 +74,89 @@ def sanitize_preview(
     console.print(table)
 
 
+def _preview_data(config_path: Path) -> dict:
+    """Calcula la vista previa pre-flight (misma lógica que el dashboard web, sin IA)."""
+    from src.web.service import service
+
+    demo_id = None
+    for sample in ("ios", "asa"):
+        try:
+            if service.demo_path(sample).resolve() == config_path.resolve():
+                demo_id = sample
+        except FileNotFoundError:
+            continue
+    return service.preview_config(config_path.read_text(encoding="utf-8"), config_path.name, demo_id=demo_id)
+
+
+def _print_preview(data: dict) -> None:
+    """Imprime con Rich la ficha pre-flight: radiografía, sintaxis y guía de vulnerabilidades (demos)."""
+    console.print(
+        Panel.fit(
+            f"[bold]{data['hostname']}[/bold] · {data['dialecto']}\n"
+            f"[dim]{data['archivo']} · {data['tamano_humano']} · {data['total_lineas']} líneas[/dim]\n"
+            f"Interfaces: [cyan]{len(data['interfaces'])}[/cyan] · ACLs aplicadas: [cyan]{len(data['acls_activas'])}[/cyan] · "
+            f"ACLs huérfanas: [yellow]{len(data['acls_huerfanas'])}[/yellow]\n"
+            f"A enmascarar: [yellow]{data['sanitizacion']['ips']}[/yellow] IPs públicas · "
+            f"[yellow]{data['sanitizacion']['secretos']}[/yellow] secretos",
+            title="🔎 Vista previa (no se ejecutó la auditoría)",
+            border_style="cyan",
+        )
+    )
+    sintaxis = data["sintaxis"]
+    if not sintaxis["disponible"]:
+        console.print(f"[dim]ℹ️ Control de sintaxis no disponible: {sintaxis['error']}[/dim]")
+    elif sintaxis["problemas"]:
+        console.print(f"[bold yellow]⚠️ Batfish no reconoce {len(sintaxis['problemas'])} línea(s):[/bold yellow]")
+        for issue in sintaxis["problemas"]:
+            console.print(f"  • línea {issue['lineas']}: [dim]{issue['linea_texto']}[/dim] ({issue['tipo']})")
+    else:
+        console.print("[green]✅ Batfish parseó toda la configuración sin líneas no reconocidas.[/green]")
+
+    guia = data.get("guia")
+    if guia:
+        table = Table(title=guia["titulo"])
+        table.add_column("Severidad", style="bold")
+        table.add_column("Líneas", style="cyan")
+        table.add_column("Regla / vulnerabilidad")
+        table.add_column("Riesgo", style="yellow")
+        colors = {"CRITICA": "red", "ALTA": "dark_orange", "MEDIA": "yellow", "BAJA": "green"}
+        for v in guia["vulnerabilidades"]:
+            color = colors.get(v["severidad"], "white")
+            table.add_row(f"[{color}]{v['severidad']}[/{color}]", ", ".join(map(str, v["lineas"])), v["titulo"], v["riesgo"])
+        console.print(table)
+
+
+@app.command()
+def preview(
+    config_path: Path = typer.Argument(..., help="Ruta al archivo de configuración Cisco (.cfg)"),
+):
+    """Vista previa pre-flight de una configuración, sin ejecutar Batfish formal ni Gemini."""
+    if not config_path.exists():
+        console.print(f"[bold red]Error:[/bold red] El archivo {config_path} no existe.")
+        raise typer.Exit(code=1)
+    _print_preview(_preview_data(config_path))
+
+
 @app.command()
 def audit(
     config_path: Path = typer.Argument(..., help="Ruta al archivo de configuración Cisco (.cfg)"),
     sanitize: bool = typer.Option(True, "--sanitize/--no-sanitize", help="Activar sanitización reversible (Recomendado)"),
     output_dir: Path = typer.Option(REPORTS_DIR, "--output", "-o", help="Directorio para los reportes generados"),
+    preview_first: bool = typer.Option(False, "--preview", help="Mostrar la vista previa y pedir confirmación antes de auditar"),
 ):
     """
     Ejecuta la auditoría integral completa:
     Sanitización ➔ Topología ➔ Batfish Formal ➔ Gemini Cognitivo ➔ Reportes y Scripts CLI.
     """
+    if preview_first:
+        if not config_path.exists():
+            console.print(f"[bold red]Error:[/bold red] El archivo {config_path} no existe.")
+            raise typer.Exit(code=1)
+        _print_preview(_preview_data(config_path))
+        if not typer.confirm("¿Desea iniciar la auditoría completa?", default=True):
+            console.print("[yellow]Auditoría cancelada por el usuario.[/yellow]")
+            raise typer.Exit(code=0)
+
     console.print(
         Panel.fit(
             f"[bold cyan]Cisco AI Firewall Auditor & Change Impact Advisor[/bold cyan]\n"

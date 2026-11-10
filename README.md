@@ -85,6 +85,12 @@ Verifica que las credenciales y el contenedor Batfish estén listos:
 python -m src.cli check-env
 ```
 
+### Vista Previa Pre-Flight (RF-10)
+Inspecciona una configuración Cisco antes de auditar (radiografía, sintaxis Batfish y guía de reglas en demos, sin llamar a Gemini):
+```bash
+python -m src.cli preview snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg
+```
+
 ### Previsualizar Sanitización (Zero-Leak)
 Observa qué IPs públicas y secretos se enmascararán antes de enviarse a la nube:
 ```bash
@@ -94,7 +100,11 @@ python -m src.cli sanitize-preview snapshots/lab_cisco_vuln/configs/fw-borde-ios
 ### Ejecutar Auditoría Completa en CLI
 Audita un router o firewall Cisco con el pipeline completo (Batfish formal + Gemini):
 ```bash
+# Ejecución directa
 python -m src.cli audit snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg
+
+# Con pre-flight check y confirmación previa obligatoria
+python -m src.cli audit snapshots/lab_cisco_vuln/configs/fw-borde-ios.cfg --preview
 ```
 
 ### Iniciar el Dashboard Web Interactivo (MEJ-05)

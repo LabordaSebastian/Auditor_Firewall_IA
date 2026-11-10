@@ -106,22 +106,174 @@ function auditFile(file) {
   });
 }
 
+function auditDemo(id) {
+  runAudit(() => api(`/api/demo/${encodeURIComponent(id)}?sanitize=${sanitizeOn()}`, { method: 'POST' }));
+}
+
+/* ---------------------------------------------------------------- Pre-flight (vista previa antes de auditar) */
+let pending = null;   // { kind: 'file', file } | { kind: 'demo', id }
+
+function showPicker(show) {
+  $('pickerView').hidden = !show;
+  $('previewView').hidden = show;
+}
+
+async function runPreview(promiseFactory, target) {
+  $('uploadMsg').innerHTML = '<div class="alert warn"><span class="spinner"></span> Analizando la configuración…</div>';
+  try {
+    const p = await promiseFactory();
+    pending = target;
+    $('uploadMsg').innerHTML = '';
+    renderPreview(p);
+  } catch (e) {
+    $('uploadMsg').innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
+    $('fileInput').value = '';
+  }
+}
+
+function previewFile(file) {
+  if (!file) return;
+  runPreview(() => {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    fd.append('sanitize', sanitizeOn());
+    return api('/api/preview', { method: 'POST', body: fd });
+  }, { kind: 'file', file });
+}
+
+function previewDemo(id) {
+  runPreview(() => api(`/api/demo/${encodeURIComponent(id)}/preview?sanitize=${sanitizeOn()}`), { kind: 'demo', id });
+}
+
+function cfgHtml(text, hl, synLines) {
+  return text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').map((line, i) => {
+    const n = i + 1;
+    const cls = synLines.has(n) ? 'hl-SYN' : hl[n] ? `hl-${hl[n]}` : '';
+    return `<div class="cl ${cls}" data-ln="${n}"><span class="ln">${n}</span><span class="tx">${esc(line) || ' '}</span></div>`;
+  }).join('');
+}
+
+function syntaxBox(sin) {
+  const problemas = sin.problemas || [];
+  if (!sin.disponible) {
+    return `<div class="syn-box off">ℹ️ Control de sintaxis no disponible (${esc(sin.error || 'Batfish no responde')}). La auditoría completa requiere Batfish activo.</div>`;
+  }
+  if (!problemas.length) return '<div class="syn-box ok">✅ Batfish parseó toda la configuración sin líneas no reconocidas <small>(bf.q.initIssues)</small>.</div>';
+  return `<div class="syn-box warn">⚠️ <b>Batfish no reconoce ${problemas.length} línea(s)</b> <small>(bf.q.initIssues)</small>. Se ignoran en el análisis formal y están marcadas en violeta en el visor.<ul>${problemas.map((x) =>
+    `<li><code>${esc(x.linea_texto)}</code> — ${esc(x.tipo)}: ${esc(x.detalle)}${x.lineas.length ? ` (línea ${x.lineas.join(', ')})` : ''}</li>`).join('')}</ul></div>`;
+}
+
+function guideHtml(g) {
+  if (!g) {
+    return `<h3>📚 Guía de reglas</h3><div class="no-guide">Esta es una configuración propia: la guía explicada solo existe para los laboratorios demo.
+      Las vulnerabilidades reales se determinarán al ejecutar la auditoría (Batfish + Gemini).</div>`;
+  }
+  return `<h3>📚 ${esc(g.titulo)}</h3><p class="guide-intro">${esc(g.descripcion)} Haz clic en una tarjeta para ubicar las líneas en el visor.</p>
+    <div class="guide-list">${g.vulnerabilidades.map((v) => `
+      <div class="guide-card ${esc(v.severidad)}" data-lines="${v.lineas.join(',')}" tabindex="0">
+        <div class="gc-top"><span class="sev ${esc(v.severidad)}">${esc(v.severidad)}</span><b>${esc(v.titulo)}</b></div>
+        <p>${esc(v.explicacion)}</p><p class="risk">⚠️ ${esc(v.riesgo)}</p>
+        <div class="lines">Líneas: ${v.lineas.join(', ')}</div>
+      </div>`).join('')}</div>`;
+}
+
+function renderPreview(p) {
+  const hl = p.lineas_resaltadas || {};
+  const synLines = new Set((p.sintaxis.problemas || []).flatMap((x) => x.lineas));
+  let tab = sanitizeOn() ? 'san' : 'orig';
+  const texts = { orig: p.config_original, san: p.config_sanitizada };
+  const ifaceRows = p.interfaces.map((i) => `<tr><td>${esc(i.nombre)}</td><td>${esc(i.ip || '—')}</td><td>${esc(i.descripcion || '—')}</td>
+    <td>${esc(i.acl_in || '—')}</td><td>${esc(i.acl_out || '—')}</td></tr>`).join('');
+
+  $('previewView').innerHTML = `
+    <div class="pv-head">
+      <div class="pv-title">🔎 Vista previa: ${esc(p.archivo)}
+        <span class="chip-s">${esc(p.dialecto)}</span><span class="chip-s">${esc(p.hostname)}</span>
+        ${p.demo_id ? '<span class="chip-s demo">🧪 Laboratorio demo</span>' : ''}</div>
+      <div class="meta">${esc(p.tamano_humano)} · ${p.total_lineas} líneas · todavía no se ejecutó ninguna auditoría</div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><b>${p.interfaces.length}</b><span>Interfaces detectadas</span></div>
+      <div class="tile"><b>${p.acls_activas.length}</b><span>ACLs aplicadas</span></div>
+      <div class="tile ${p.acls_huerfanas.length ? 'warn' : 'ok'}"><b>${p.acls_huerfanas.length}</b><span>ACLs huérfanas</span></div>
+      <div class="tile ${p.sanitizacion.ips ? 'warn' : 'ok'}"><b>${p.sanitizacion.ips}</b><span>IPs públicas a enmascarar</span></div>
+      <div class="tile ${p.sanitizacion.secretos ? 'warn' : 'ok'}"><b>${p.sanitizacion.secretos}</b><span>Secretos a proteger</span></div>
+    </div>
+    ${syntaxBox(p.sintaxis)}
+    <details style="margin-bottom:16px"><summary class="meta" style="cursor:pointer">📡 Interfaces y ACLs asociadas</summary>
+      <table class="iface-table"><thead><tr><th>Interfaz</th><th>IP</th><th>Descripción</th><th>ACL in</th><th>ACL out</th></tr></thead><tbody>${ifaceRows}</tbody></table></details>
+    <div class="pv-grid">
+      <div class="pv-col">
+        <div class="cfg-bar">
+          <div class="tabs"><button class="tab" data-tab="orig">📄 Original</button><button class="tab" data-tab="san">🔒 Sanitizada (lo que vería Gemini)</button></div>
+          <button class="btn sm" id="pvCopy">Copiar</button>
+        </div>
+        <div class="cfg-view" id="cfgView"></div>
+      </div>
+      <div class="pv-col">${guideHtml(p.guia)}</div>
+    </div>
+    <div class="pv-actions">
+      <button class="btn primary big" id="pvConfirm">🚀 Iniciar auditoría completa</button>
+      <button class="btn big" id="pvCancel">✕ Elegir otra configuración</button>
+    </div>`;
+
+  const view = $('cfgView');
+  const paint = () => {
+    view.innerHTML = cfgHtml(texts[tab], hl, synLines);
+    $('previewView').querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
+  };
+  paint();
+  $('previewView').querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => { tab = t.dataset.tab; paint(); }));
+  $('pvCopy').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(texts[tab]);
+    $('pvCopy').textContent = '¡Copiado!'; setTimeout(() => ($('pvCopy').textContent = 'Copiar'), 1400);
+  });
+  $('previewView').querySelectorAll('.guide-card').forEach((c) => {
+    const go = () => focusLines(view, c.dataset.lines.split(',').map(Number));
+    c.addEventListener('click', go);
+    c.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  });
+  $('pvCancel').addEventListener('click', cancelPreview);
+  $('pvConfirm').addEventListener('click', () => {
+    const t = pending;
+    cancelPreview();
+    if (t && t.kind === 'file') auditFile(t.file); else if (t) auditDemo(t.id);
+  });
+  showPicker(false);
+}
+
+function focusLines(view, lines) {
+  const els = lines.map((n) => view.querySelector(`.cl[data-ln="${n}"]`)).filter(Boolean);
+  if (!els.length) return;
+  view.scrollTo({ top: Math.max(els[0].offsetTop - view.clientHeight / 3, 0), behavior: 'smooth' });
+  els.forEach((el) => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
+}
+
+function cancelPreview() {
+  pending = null;
+  $('previewView').innerHTML = '';
+  $('fileInput').value = '';
+  $('uploadMsg').innerHTML = '';
+  showPicker(true);
+}
+
 function setupUpload() {
   const dz = $('dropzone'), fi = $('fileInput');
   dz.addEventListener('click', () => fi.click());
   dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
-  fi.addEventListener('change', () => auditFile(fi.files[0]));
+  fi.addEventListener('change', () => previewFile(fi.files[0]));
   ['dragenter', 'dragover'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('drag'); }));
   ['dragleave', 'drop'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('drag'); }));
-  dz.addEventListener('drop', (e) => auditFile(e.dataTransfer.files[0]));
+  dz.addEventListener('drop', (e) => previewFile(e.dataTransfer.files[0]));
   $('optSanitize').addEventListener('change', updateSanBadge);
   updateSanBadge();
   api('/api/demos').then((demos) => {
     $('demoButtons').innerHTML = demos.map((d) => `<button class="btn" data-demo="${esc(d.id)}">🧪 Demo ${esc(d.etiqueta)}</button>`).join('');
     $('demoButtons').querySelectorAll('button').forEach((b) =>
-      b.addEventListener('click', () => runAudit(() => api(`/api/demo/${b.dataset.demo}?sanitize=${sanitizeOn()}`, { method: 'POST' }))));
+      b.addEventListener('click', () => previewDemo(b.dataset.demo)));
   }).catch(() => { });
 }
+
 
 /* ---------------------------------------------------------------- Render principal */
 function render() {

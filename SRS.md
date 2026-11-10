@@ -148,6 +148,12 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-09.2:** Generar reportes ejecutivos en PDF de diseño corporativo formal listos para entrega C-Level utilizando **`fpdf2`** (Python puro, sin dependencias nativas de SO), incluyendo portada institucional, posturas de seguridad actual vs. proyectada, gráficos donut vectoriales, topología y fichas completas de hallazgos con scripts CLI.
 * **RF-09.3:** Proveer hoja de estilos `@media print` para exportación directa de alta fidelidad desde el navegador web.
 
+### RF-10: Vista Previa Pre-Flight, Calidad de Sintaxis y Guía Pedagógica (`src/web/demo_guides.py` + `src/cli.py`) `[MEJ-01]`
+* **RF-10.1 (Inspección Local Pre-Flight):** Permitir al usuario visualizar la configuración completa antes de ejecutar la auditoría formal y semántica, mostrando radiografía estructural (hostname, dialecto, interfaces, ACLs activas/huérfanas, recuento de IPs públicas y secretos detectados a enmascarar) en milisegundos y sin invocar la API de Gemini.
+* **RF-10.2 (Visor Dual y Resaltado Sintáctico):** Integrar un visor de configuración completo con numeración de líneas, selector entre *Configuración Original* y *Configuración Sanitizada (Zero-Leak)*, scroll vertical fluido y botón de copiado rápido al portapapeles.
+* **RF-10.3 (Guía Pedagógica de Laboratorios Demo):** Documentar para cada configuración de prueba (`fw-borde-ios.cfg` y `fw-borde-asa.cfg`) las vulnerabilidades inyectadas, severidad, explicación técnica y líneas exactas afectadas. Al hacer clic sobre cualquier tarjeta de la guía, el visor de código debe realizar scroll suave y destello visual sobre las líneas correspondientes.
+* **RF-10.4 (Control de Calidad de Sintaxis con Batfish `initIssues`):** Integrar `bf.q.initIssues()` para validar la sintaxis de la configuración antes de auditar, alertando sobre comandos no soportados o líneas no reconocidas con marcado visual en violeta en el visor.
+* **RF-10.5 (Paridad Web y CLI):** Proveer el comando CLI `python -m src.cli preview <archivo.cfg>` y el flag interactivo `python -m src.cli audit <archivo.cfg> --preview` para inspección previa y confirmación explícita previa a la ejecución.
 
 ---
 
@@ -338,3 +344,13 @@ cisco-ai-firewall-auditor/
   6. **Distribución Gráfica de Riesgo:** Donut Charts vectoriales SVG de Severidad y Taxonomía con centro totalizador y filtrado interactivo.
   7. **Generador PDF Corporativo:** Implementación con **`fpdf2`** (Python puro, sin dependencias nativas de Cairo/Pango) complementada con estilos `@media print`.
 * **Impacto:** Interfaz unificada de grado telecomunicaciones que transforma la suite en un Digital Twin interactivo accesible para operadores y comités ejecutivos.
+
+### ADR-005 (2026-11-02): Vista Previa Pre-Flight, Control de Sintaxis con Batfish (`initIssues`) y Guía Pedagógica de Demos
+* **Estado:** Aprobado e Implementado (`Fase 1`).
+* **Contexto:** Al soltar o seleccionar un archivo `.cfg` o una demo en la plataforma web o CLI, el sistema disparaba de forma inmediata el pipeline completo (Batfish formal + API de Gemini), sin permitir al operador verificar previamente el contenido de la configuración, el dialecto detectado, los secretos a enmascarar ni entender las vulnerabilidades inyectadas en los laboratorios de prueba.
+* **Decisión Técnica:**
+  1. **Pre-Flight Inspection en Memoria (`src/web/service.py`):** Creación del método `preview_config()` que ejecuta extracción de topología y pre-sanitización en menos de 50 ms sin invocar modelos LLM.
+  2. **Control de Calidad de Sintaxis (`bf.q.initIssues`):** Batfish evalúa la sintaxis del archivo cargado y devuelve líneas no reconocidas o comandos obsoletos (`src/batfish_analyzer.py`), degradando con elegancia si Batfish no está activo.
+  3. **Guía Pedagógica de Laboratorios (`src/web/demo_guides.py`):** Catálogo estático curado para las demos Cisco IOS y ASA con anclaje interactivo a líneas de código que enfoca y destella las reglas en el visor al hacer clic.
+  4. **Paridad Web y CLI:** Integración in-place en la pantalla principal del dashboard web (reemplazando temporalmente la dropzone con animación suave) y subcomando `python -m src.cli preview` más flag `--preview` en `audit` para confirmar antes de ejecutar.
+* **Impacto:** Cero ejecuciones accidentales, total transparencia sobre qué viaja a la nube sanitizado y ahorro sustancial de tokens y cómputo de verificación formal.

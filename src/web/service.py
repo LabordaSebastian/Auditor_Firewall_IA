@@ -17,6 +17,7 @@ from src.models import ContextoTopologia, HallazgoMatematico, ReporteAuditoriaFi
 from src.report_builder import ReportBuilder
 from src.sanitizer import ConfigSanitizer
 from src.topology_extractor import CiscoTopologyExtractor
+from src.web.demo_guides import get_demo_guide, guide_lines
 from src.web.graph import build_graph, build_zones
 
 DEMO_DIR = SNAPSHOTS_DIR / "lab_cisco_vuln" / "configs"
@@ -103,6 +104,61 @@ class AuditService:
         if not path.exists():
             raise FileNotFoundError(sample_id)
         return path
+
+    # ------------------------------------------------------------------ pre-flight (RF-10)
+    def preview_config(self, raw_config: str, filename: str, sanitize: bool = True,
+                       demo_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Inspección previa sin ejecutar la auditoría (sin Gemini): radiografía estructural, vista
+        original vs. sanitizada, guía de vulnerabilidades (solo demos) y control de sintaxis con
+        Batfish (initIssues). Si Batfish no está disponible, el preview sigue funcionando.
+        """
+        sanitized, lookup_map = ConfigSanitizer().sanitize(raw_config, source_filename=filename)
+        extractor = CiscoTopologyExtractor(raw_config)
+        dialect = extractor.detect_dialect()
+        interfaces = extractor.extract_interfaces(dialect)
+        active, orphan = extractor.extract_acls_and_orphans(interfaces, dialect)
+        vty_ac, vty_ti = extractor.extract_vty_security()
+
+        syntax: Dict[str, Any] = {"disponible": True, "problemas": [], "error": None}
+        try:
+            with self._bf_lock:
+                syntax["problemas"] = self._analyzer().check_syntax(sanitized, filename)
+        except BatfishUnavailableError as exc:
+            syntax.update(disponible=False, error=str(exc))
+        except Exception as exc:  # consulta fallida: el preview no debe romperse por esto
+            syntax.update(disponible=False, error=f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+
+        guide = get_demo_guide(demo_id) if demo_id else None
+        size = len(raw_config.encode("utf-8"))
+        return {
+            "archivo": filename,
+            "demo_id": demo_id,
+            "tamano_bytes": size,
+            "tamano_humano": f"{size / 1024:.1f} KB" if size >= 1024 else f"{size} B",
+            "total_lineas": len(raw_config.splitlines()),
+            "dialecto": dialect,
+            "hostname": extractor.extract_hostname(),
+            "interfaces": [
+                {"nombre": n, "ip": i.ip_address, "mascara": i.mascara, "descripcion": i.descripcion,
+                 "acl_in": i.acl_in, "acl_out": i.acl_out, "security_level": i.security_level}
+                for n, i in interfaces.items()
+            ],
+            "acls_activas": active,
+            "acls_huerfanas": orphan,
+            "vty": {"access_class": vty_ac, "transport_input": vty_ti},
+            "sanitizacion": {
+                "activa": sanitize,
+                "ips": len(lookup_map.get("ip_mappings", {})),
+                "secretos": len(lookup_map.get("secret_mappings", {})),
+            },
+            "sintaxis": syntax,
+            "guia": guide,
+            "lineas_resaltadas": {str(k): v for k, v in guide_lines(guide).items()},
+            "config_original": raw_config,
+            "config_sanitizada": sanitized,
+        }
+
 
     # ------------------------------------------------------------------ auditoría
     def run_audit(self, raw_config: str, filename: str, sanitize: bool = True,

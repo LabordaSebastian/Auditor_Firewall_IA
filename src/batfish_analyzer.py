@@ -147,6 +147,35 @@ class BatfishAnalyzer:
     def _step_info(step: Any) -> Dict[str, str]:
         return {"accion": str(getattr(step, "action", "")), "detalle": str(getattr(step, "detail", ""))}
 
+    def check_syntax(
+        self,
+        config_text: str,
+        filename: str,
+        network_name: str = "cisco_auditor_web",
+    ) -> List[Dict[str, Any]]:
+        """
+        Control de calidad de sintaxis: bf.q.initIssues() lista líneas no reconocidas, comandos
+        no soportados y problemas de conversión que Batfish detectó al parsear la configuración.
+        """
+        snap = "snap_syntax"
+        self._load_snapshot(config_text, filename, snap, network_name)
+        df = self.session.q.initIssues().answer(snapshot=snap).frame()
+        issues: List[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            lineas: List[int] = []
+            for fl in row.get("Source_Lines") or []:
+                raw = getattr(fl, "lines", None)
+                if raw is None and isinstance(fl, dict):
+                    raw = fl.get("lines")
+                lineas.extend(int(n) for n in (raw or []) if str(n).isdigit())
+            issues.append({
+                "tipo": str(row.get("Type", "Desconocido")),
+                "detalle": str(row.get("Details", ""))[:300],
+                "linea_texto": str(row.get("Line_Text", "") or "")[:200],
+                "lineas": sorted(set(lineas)),
+            })
+        return issues
+
     def simulate_packet(
         self,
         config_text: str,

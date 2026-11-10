@@ -52,6 +52,34 @@ def demos():
     return service.list_demos()
 
 
+@router.post("/preview")
+async def preview(
+    archivo: UploadFile = File(...),
+    sanitize: bool = Form(True),
+):
+    """Vista previa pre-flight de un archivo subido (RF-10). No ejecuta la auditoría ni la IA."""
+    content = await archivo.read(MAX_CONFIG_BYTES + 1)
+    if len(content) > MAX_CONFIG_BYTES:
+        raise HTTPException(413, "El archivo supera 2 MB.")
+    try:
+        raw = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "El archivo debe estar codificado en UTF-8.")
+    name = (archivo.filename or "config.cfg").split("/")[-1].split("\\")[-1]
+    return service.preview_config(raw, name, sanitize=sanitize)
+
+
+@router.get("/demo/{sample_id}/preview")
+def demo_preview(sample_id: str, sanitize: bool = True):
+    """Vista previa pre-flight de un laboratorio demo, con su guía de vulnerabilidades (RF-10)."""
+    try:
+        path = service.demo_path(sample_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Demo inexistente.")
+    return service.preview_config(path.read_text(encoding="utf-8"), path.name, sanitize=sanitize,
+                                  demo_id=sample_id.lower())
+
+
 @router.post("/audit")
 async def audit(
     archivo: UploadFile = File(...),

@@ -31,22 +31,25 @@
     <!-- ================= CARGA ================= -->
     <section id="uploadSection" class="card" aria-labelledby="uploadTitle">
       <h2 id="uploadTitle">📥 Nueva auditoría</h2>
-      <div class="upload-grid">
-        <div>
-          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Soltar archivo de configuración">
-            <div class="big">📄</div>
-            <p><b>Arrastra tu archivo <code>.cfg</code> aquí</b> o haz clic para seleccionarlo</p>
-            <small>Cisco IOS / IOS-XE / ASA · máx. 2 MB</small>
-            <input type="file" id="fileInput" accept=".cfg,.txt,.conf" hidden>
-          </div>
-          <div class="btn-row" style="margin-top:14px" id="demoButtons"></div>
+      <div id="pickerView">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Soltar archivo de configuración">
+          <div class="big">📄</div>
+          <p><b>Arrastra tu archivo <code>.cfg</code> aquí</b> o haz clic para seleccionarlo</p>
+          <small>Cisco IOS / IOS-XE / ASA · máx. 2 MB · verás una vista previa antes de auditar</small>
+          <input type="file" id="fileInput" accept=".cfg,.txt,.conf" hidden>
         </div>
+        <div class="btn-row" style="margin-top:14px" id="demoButtons"></div>
+      </div>
+      <div id="previewView" hidden></div>
+      <div class="opt-grid">
         <div>
           <div class="switch-row">
             <div><b>🔒 Sanitización Zero-Leak</b><span>IPs públicas → RFC 5737 y secretos → tokens, antes de enviar a Gemini.</span></div>
             <label class="toggle"><input type="checkbox" id="optSanitize" checked aria-label="Activar sanitización"><span class="slider"></span></label>
           </div>
           <div style="padding:6px 0 4px"><span class="badge-zero" id="sanBadge">● Protección Zero-Leak activa</span></div>
+        </div>
+        <div>
           <div class="switch-row">
             <div><b>🧠 Análisis con Gemini</b><span>Si lo desactivas, solo se ejecuta el análisis formal de Batfish.</span></div>
             <label class="toggle"><input type="checkbox" id="optAI" checked aria-label="Activar análisis con Gemini"><span class="slider"></span></label>
@@ -59,6 +62,7 @@
       </div>
       <div id="uploadMsg"></div>
     </section>
+
 
     <!-- ================= RESULTADOS ================= -->
     <div id="results">
