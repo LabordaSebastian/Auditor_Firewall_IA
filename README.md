@@ -121,6 +121,7 @@ Accede desde tu navegador a `http://127.0.0.1:8000`:
 * **Matriz de Aislamiento y Perímetros:** Evaluación visual de segmentación Zero Trust entre zonas.
 * **Digital Twin Diferencial (`compareFilters`):** Compara el impacto del Plan A o Plan B antes de tocar producción.
 * **Reachability Simbólica (`reachability`) y Prueba de ACL (`testFilters`) — Fase 2:** Verifica sobre *todo* el espacio de paquetes si algún flujo llega de una zona a otra por servicio, y evalúa un paquete hipotético contra una ACL aislada. Compatible con IOS y ASA (interfaces `nameif` resueltas automáticamente).
+* **Centro de Decisiones What-If · prioridad top-down — Fase 3:** Hallazgos ordenados por severidad y riesgo de cambio; elige Plan A / Plan B / Omitir por hallazgo, simula la combinación en el Digital Twin (flujos que cambian y matriz de aislamiento antes/después), consulta la postura estimada y descarga scripts consolidados de remediación y rollback. El botón **↺ Reset** vuelve al Plan A recomendado.
 * **Modelo de Red (`routes` · `layer3Edges`):** Tabla de enrutamiento, adyacencias L3 e interfaces tal como las interpreta Batfish.
 * **Exportación en un Clic:** Descarga informes en **PDF corporativo**, Markdown o scripts `.cli` de remediación/rollback.
 

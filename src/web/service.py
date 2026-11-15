@@ -14,6 +14,9 @@ from src.batfish_analyzer import BatfishAnalyzer, BatfishUnavailableError
 from src.config import BATFISH_HOST, BATFISH_PORT, GEMINI_API_KEY, GEMINI_MODEL, REPORTS_DIR, SNAPSHOTS_DIR
 from src.config_patcher import apply_commands
 from src.gemini_advisor import GeminiFirewallAdvisor
+from src.prioritization import (
+    commands_by_finding, build_scripts, default_decisions, normalize_decisions, projected_score, rank_findings,
+)
 from src.models import ContextoTopologia, HallazgoMatematico, ReporteAuditoriaFirewall
 from src.report_builder import ReportBuilder
 from src.sanitizer import ConfigSanitizer
@@ -246,6 +249,8 @@ class AuditService:
             "matematicos": self.shadowing(s),
             "grafo": s.graph,
             "acls": self.acl_names(s),
+            "prioridades": self.priorities(s),
+            "decisiones_default": default_decisions(rep) if rep else {},
         }
 
     def shadowing(self, s: AuditSession) -> List[Dict[str, Any]]:
@@ -400,21 +405,14 @@ class AuditService:
         result["acls"] = acls
         return result
 
-    def digital_twin_diff(self, s: AuditSession, plan: str) -> Dict[str, Any]:
+    def _twin_compare(self, s: AuditSession, plan_label: str, per_finding: List[tuple]) -> Dict[str, Any]:
         """
-        Digital Twin diferencial (MEJ-01): certifica con compareFilters qué flujos cambian al
-        aplicar el Plan A/B. Si la comparación conjunta falla (p. ej. cambios de plano de gestión
-        VTY que Batfish no puede comparar), se evalúa cada hallazgo por separado.
+        Núcleo del Digital Twin diferencial: compara con compareFilters la config actual contra la
+        candidata. Si la comparación conjunta falla (p. ej. cambios de plano de gestión VTY que
+        Batfish no puede comparar), evalúa cada hallazgo por separado.
+        `per_finding`: [(id_hallazgo, [comandos ya re-sanitizados])].
         """
-        if not s.report:
-            raise ValueError("No hay hallazgos con planes de remediación para simular.")
-        plan = plan.upper()
-        per_finding: List[tuple] = []
-        for h in s.report.hallazgos:
-            opcion = h.plan_a_recomendado if plan == "A" else h.plan_b_conservador
-            per_finding.append((h.id_hallazgo, [self._resanitize(c, s.lookup_map) for c in opcion.comandos_cli_implementacion]))
         all_commands = [c for _, cmds in per_finding for c in cmds]
-
         combined = self._compare_commands(s, all_commands)
         cambios, errores = combined["cambios"], combined["errores"]
         no_verificables: List[Dict[str, str]] = []
@@ -434,13 +432,77 @@ class AuditService:
 
         diff_lines = list(difflib.unified_diff(
             s.sanitized_config.splitlines(), combined["candidate"].splitlines(),
-            "actual", f"candidata_plan_{plan}", lineterm="", n=1,
+            "actual", f"candidata_plan_{plan_label}", lineterm="", n=1,
         ))
-        result = {
-            "plan": plan, "modo": modo, "cambios": cambios, "total_cambios": len(cambios),
+        return {
+            "plan": plan_label, "modo": modo, "cambios": cambios, "total_cambios": len(cambios),
             "errores": errores, "no_verificables": no_verificables, "diff_config": diff_lines,
+            "_candidate": combined["candidate"],
         }
+
+    def digital_twin_diff(self, s: AuditSession, plan: str) -> Dict[str, Any]:
+        """Digital Twin diferencial (MEJ-01): certifica con compareFilters el efecto del Plan A/B completo."""
+        if not s.report:
+            raise ValueError("No hay hallazgos con planes de remediación para simular.")
+        plan = plan.upper()
+        per_finding: List[tuple] = []
+        for h in s.report.hallazgos:
+            opcion = h.plan_a_recomendado if plan == "A" else h.plan_b_conservador
+            per_finding.append((h.id_hallazgo, [self._resanitize(c, s.lookup_map) for c in opcion.comandos_cli_implementacion]))
+        result = self._twin_compare(s, plan, per_finding)
+        result.pop("_candidate", None)
         return self._deep_desanitize(result, s.lookup_map)
+
+    # ------------------------------------------------------------------ Fase 3: priorización y What-If
+    def priorities(self, s: AuditSession) -> List[Dict[str, Any]]:
+        return rank_findings(s.report) if s.report else []
+
+    def what_if(self, s: AuditSession, decisiones: Dict[str, str], evaluar_aislamiento: bool = True) -> Dict[str, Any]:
+        """
+        Centro de decisiones (RF-12): aplica sobre la config sanitizada los planes elegidos por el
+        operador (A / B / NONE por hallazgo, en orden top-down), certifica el efecto con el Digital
+        Twin (compareFilters) y recalcula la matriz de aislamiento antes/después.
+        """
+        if not s.report:
+            raise ValueError("No hay hallazgos con planes de remediación para evaluar.")
+        decisions = normalize_decisions(s.report, decisiones)
+        seleccion = commands_by_finding(s.report, decisions)
+        postura = projected_score(s.report, decisions)
+        scripts = build_scripts(s.report, decisions)
+        base: Dict[str, Any] = {
+            "decisiones": decisions, "postura": postura, "scripts": scripts,
+            "aplicados": [fid for fid, _ in seleccion],
+            "omitidos": [fid for fid, d in decisions.items() if d == "NONE"],
+        }
+        if not seleccion:  # nada que simular: la red queda igual
+            base.update(plan="NINGUNO", modo="conjunto", cambios=[], total_cambios=0, errores=[],
+                        no_verificables=[], diff_config=[], aislamiento=None)
+            return base
+
+        per_finding = [(fid, [self._resanitize(c, s.lookup_map) for c in cmds]) for fid, cmds in seleccion]
+        base_cells = self.isolation(s)["celdas"] if evaluar_aislamiento else None
+        twin = self._twin_compare(s, "WHATIF", per_finding)
+        candidate = twin.pop("_candidate")
+
+        aislamiento: Optional[Dict[str, Any]] = None
+        if evaluar_aislamiento:
+            try:
+                with self._bf_lock:
+                    after = self._analyzer().check_zone_isolation(candidate, s.filename, s.zones)
+                antes = {(c["origen"], c["destino"]): c["estado"] for c in base_cells}
+                cambios_iso = [
+                    {"origen": c["origen"], "destino": c["destino"], "antes": antes.get((c["origen"], c["destino"]), "?"),
+                     "despues": c["estado"]}
+                    for c in after if antes.get((c["origen"], c["destino"])) != c["estado"]
+                ]
+                aislamiento = {"zonas": [z["nombre"] for z in s.zones], "antes": base_cells, "despues": after, "cambios": cambios_iso}
+            except BatfishUnavailableError:
+                raise
+            except Exception as exc:  # la matriz posterior es complementaria: no invalida el resto
+                aislamiento = {"error": f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}"}
+        base.update(twin)
+        base["aislamiento"] = aislamiento
+        return self._deep_desanitize(base, s.lookup_map)
 
 
     # ------------------------------------------------------------------ descargas

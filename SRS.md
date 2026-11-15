@@ -163,6 +163,14 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-11.5 (Modelo de Red — `bf.q.routes` + `bf.q.layer3Edges`):** Endpoint `GET /api/session/{id}/model` con tabla de enrutamiento, adyacencias L3 e inventario de interfaces tal como Batfish los interpreta (cacheado por sesión).
 * **RF-11.6 (Zero-Leak en Consultas Interactivas):** Las IPs reales ingresadas por el usuario se re-sanitizan antes de llegar a Batfish y todas las respuestas se de-sanitizan localmente.
 
+### RF-12: Priorización Top-Down, Centro de Decisiones What-If y Reset (`src/prioritization.py` + `src/web/`) `[Fase 3]`
+* **RF-12.1 (Priorización Top-Down):** Los hallazgos se ordenan por severidad descendente y, a igual severidad, por riesgo operativo ascendente (cambio más seguro primero); los empates se resuelven por confirmación Batfish, luego por el orden sugerido por la IA y por ID (determinista). Cada hallazgo expone posición, motivo y marca *quick win* (impacto NULO/BAJO).
+* **RF-12.2 (Centro de Decisiones What-If):** El operador elige por hallazgo `Plan A`, `Plan B` u `Omitir` (`NONE`). `POST /api/session/{id}/whatif` aplica los planes elegidos en orden top-down sobre la configuración sanitizada y certifica el efecto con el Digital Twin (`compareFilters`, con *fallback* por hallazgo) y la matriz de aislamiento antes/después (`reachability`). Si no hay cambios seleccionados no se consulta Batfish.
+* **RF-12.3 (Postura Estimada):** La diferencia entre la postura actual y la proyectada por la IA se reparte entre los hallazgos según su peso de severidad (CRÍTICA 10, ALTA 6, MEDIA 3, BAJA 1); el Plan B aporta el 60 %. Es una **estimación** de decisión (no un análisis formal) y así se rotula; con todo en Plan A coincide exactamente con la proyectada.
+* **RF-12.4 (Scripts Consolidados):** Se generan scripts `.cli` de remediación (orden top-down) y de rollback (orden inverso) solo con las decisiones elegidas.
+* **RF-12.5 (Reset):** El botón *Reset* restablece las decisiones al Plan A recomendado, limpia el resultado de la simulación, las pestañas de plan y los filtros. Se ofrecen además atajos: *Todo A*, *Todo B*, *Solo bajo riesgo* y *Ninguno*.
+* **RF-12.6 (Zero-Leak):** Los comandos se re-sanitizan antes de llegar a Batfish y la respuesta se de-sanitiza localmente.
+
 ---
 
 ## 5. Requisitos No Funcionales
@@ -373,3 +381,15 @@ cisco-ai-firewall-auditor/
   4. **`testFilters` aislado y modelo de red (`routes`, `layer3Edges`, `interfaceProperties`):** expuestos en el dashboard (sección "Reachability simbólica y prueba de filtros" y botón "Modelo de red").
   5. Los filtros sintéticos de Batfish (`~COMBINED_OUTGOING_ACL~…`) que solo permiten se excluyen al identificar la ACL decisiva.
 * **Impacto:** Paridad funcional IOS/ASA en todo el Digital Twin, cero HTTP 500 por consultas Batfish y verificación formal "∀ paquetes" accesible desde la interfaz web. Cubierto por `tests/test_reachability.py` (incluye regresión de extremo a extremo sobre la demo ASA con Batfish real).
+
+
+### ADR-007 (2026-11-15): Priorización Top-Down y Centro de Decisiones What-If
+* **Estado:** Aprobado e Implementado (`Fase 3`).
+* **Contexto:** El orden de implementación sugerido por la IA favorecía los cambios de bajo impacto aun siendo de baja severidad, y el operador solo podía simular "todo Plan A" o "todo Plan B", sin evaluar combinaciones ni medir su efecto en la postura o la segmentación.
+* **Decisión Técnica:**
+  1. **Módulo puro `src/prioritization.py`** (sin Batfish ni Gemini) para ordenar, estimar postura y consolidar scripts; mantiene la verificación formal exclusivamente en Batfish.
+  2. **Orden determinista top-down** (severidad ↓, riesgo ↑, Batfish, orden IA, ID), reemplazando el orden de la IA como vista principal pero conservándolo como desempate.
+  3. **Refactor `_twin_compare`:** el Digital Twin diferencial (`compareFilters` + *fallback* por hallazgo) se extrae para compartirlo entre `diff` (Plan A/B completo) y `whatif` (selección mixta).
+  4. **Postura como estimación rotulada**, no como medición formal: se evitó presentar un puntaje falsamente exacto.
+  5. **Reset al Plan A**, el estado recomendado, y limpieza de resultados obsoletos ante cualquier cambio de decisión.
+* **Impacto:** El operador valida combinaciones de cambios, ve qué flujos y qué segmentos cambian antes de tocar producción y descarga scripts a medida con su rollback inverso. Cubierto por `tests/test_prioritization.py`.

@@ -1,10 +1,10 @@
 """Endpoints REST del dashboard (MEJ-05 / RF-07, RF-08, RF-09)."""
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response
 from pybatfish.exception import BatfishException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.batfish_analyzer import BatfishUnavailableError
 from src.pdf_generator import build_pdf
@@ -44,6 +44,20 @@ class TestFilterRequest(BaseModel):
     dst_ip: str = Field(..., max_length=45)
     protocolo: str = Field("TCP", pattern="^(TCP|UDP|ICMP|tcp|udp|icmp)$")
     puerto: Optional[int] = Field(None, ge=1, le=65535)
+
+
+class WhatIfRequest(BaseModel):
+    """Centro de decisiones (RF-12): decisión por hallazgo: 'A', 'B' o 'NONE' (omitir)."""
+    decisiones: Dict[str, str] = Field(default_factory=dict, max_length=200)
+    evaluar_aislamiento: bool = True
+
+    @field_validator("decisiones")
+    @classmethod
+    def _valid_decisions(cls, value: Dict[str, str]) -> Dict[str, str]:
+        for fid, d in value.items():
+            if len(fid) > 80 or str(d).upper() not in {"A", "B", "NONE"}:
+                raise ValueError(f"Decisión inválida para '{fid[:80]}': use A, B o NONE.")
+        return value
 
 
 def _session(session_id: str):
@@ -173,6 +187,13 @@ def traceroute(session_id: str, req: TracerouteRequest):
 def diff(session_id: str, req: DiffRequest):
     s = _session(session_id)
     return _batfish_guard(lambda: service.digital_twin_diff(s, req.plan))
+
+
+@router.post("/session/{session_id}/whatif")
+def whatif(session_id: str, req: WhatIfRequest):
+    """Simula en el Digital Twin las decisiones A/B/NONE por hallazgo y devuelve postura, flujos y scripts."""
+    s = _session(session_id)
+    return _batfish_guard(lambda: service.what_if(s, req.decisiones, req.evaluar_aislamiento))
 
 
 @router.post("/session/{session_id}/reachability")

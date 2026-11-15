@@ -316,3 +316,24 @@ mark.n { background: hsla(158, 64%, 48%, 0.45); color: #fff; border-radius: 3px;
   #topoCanvas { height: 320px; }
   * { color: #111 !important; }
 }
+
+/* ===== Fase 3: centro de decisiones What-If ===== */
+.btn.danger { border-color: hsla(354, 78%, 56%, 0.55); color: hsl(354, 78%, 70%); }
+.btn.danger:hover { background: hsla(354, 78%, 56%, 0.16); }
+.switch-inline { display: inline-flex; gap: 8px; align-items: center; font-size: 0.82rem; color: var(--muted); cursor: pointer; }
+.rank { display: inline-grid; place-items: center; min-width: 28px; height: 28px; border-radius: 9px; font-weight: 700; font-size: 0.82rem; background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #04121f; }
+.rank.sm { min-width: 24px; height: 24px; font-size: 0.74rem; }
+.wi-table td, .wi-table th { vertical-align: middle; }
+.wi-table tr.off td { opacity: 0.55; }
+.dec-group { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: hsla(210, 40%, 20%, 0.5); border: 1px solid var(--border); }
+.dec-group label { padding: 5px 12px; border-radius: 8px; font-size: 0.78rem; cursor: pointer; color: var(--muted); user-select: none; }
+.dec-group input { display: none; }
+.dec-group input:checked + span { color: #04121f; }
+.dec-group label:has(input:checked) { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #04121f; font-weight: 600; }
+.dec-group label:has(input[value="NONE"]:checked) { background: hsla(210, 15%, 45%, 0.6); color: var(--text, #e8eef7); }
+.qw { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; border: 1px solid hsla(158, 64%, 48%, 0.55); color: var(--ok); }
+.wi-summary { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+.wi-kpi { flex: 1; min-width: 150px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--glass); }
+.wi-kpi b { display: block; font-size: 1.5rem; }
+.wi-kpi span { font-size: 0.76rem; color: var(--muted); }
+.wi-arrow { color: var(--muted); }

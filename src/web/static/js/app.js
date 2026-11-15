@@ -286,7 +286,12 @@ function render() {
   gauge('gaugeNow', 'Postura actual', r ? r.score_seguridad_actual : null, 'hsl(354,78%,56%)');
   gauge('gaugeProj', 'Postura proyectada', r ? r.score_seguridad_proyectado : null, 'hsl(158,64%,48%)',
     r ? `+${r.score_seguridad_proyectado - r.score_seguridad_actual} pts` : '');
+  if (S.prioridades && S.prioridades.length) {
+    const pos = Object.fromEntries(S.prioridades.map((p) => [p.id, p.posicion]));
+    S.hallazgos.sort((a, b) => (pos[a.id_hallazgo] ?? 999) - (pos[b.id_hallazgo] ?? 999));
+  }
   renderDonuts();
+  renderWhatIf();
   renderFindings();
   Topo.load(S.grafo);
   setupSim();
@@ -380,7 +385,7 @@ function findingCard(h) {
       <td class="${/permit/i.test(r.accion) ? 'permit' : 'deny'}">${/permit/i.test(r.accion) ? '🟢' : '🔴'} ${esc(r.accion.toUpperCase())}</td>
       <td>${esc(r.protocolo)}</td><td>${esc(r.origen)}</td><td>${esc(r.destino)}</td><td>${esc(r.puerto)}</td><td>${esc(r.estado_flujo)}</td></tr>`).join('');
   return `<article class="card finding ${planSel['_open_' + h.id_hallazgo] ? 'open' : ''}" data-id="${esc(h.id_hallazgo)}">
-    <div class="finding-head"><span class="chev">▶</span><span class="sev ${esc(h.severidad)}">${esc(h.severidad)}</span>
+    <div class="finding-head"><span class="chev">▶</span>${rankOf(h.id_hallazgo) ? `<span class="rank sm" title="Prioridad de implementación">${rankOf(h.id_hallazgo)}</span>` : ''}<span class="sev ${esc(h.severidad)}">${esc(h.severidad)}</span>
       <h3>${esc(h.categoria_problema)} · <span style="color:var(--muted)">${esc(h.acl_o_componente)}</span></h3>
       <span class="id">${esc(h.id_hallazgo)}</span>${h.confirmado_por_batfish ? '<span class="badge-zero">✔ Batfish</span>' : '<span class="badge-zero off">Semántico</span>'}</div>
     <div class="finding-body">
@@ -844,6 +849,131 @@ const Topo = {
   },
 };
 
+/* ---------------------------------------------------------------- Fase 3: centro de decisiones What-If */
+const WI = { dec: {}, busy: false };
+const rankOf = (id) => ((S.prioridades || []).find((p) => p.id === id) || {}).posicion;
+
+function wiDefaults() { return { ...(S.decisiones_default || {}) }; }
+
+function wiEstimate() {
+  const r = S.resumen; if (!r) return null;
+  let delta = 0, aplicados = 0;
+  (S.prioridades || []).forEach((p) => {
+    const d = WI.dec[p.id];
+    if (d === 'A') { delta += p.ganancia_a; aplicados++; } else if (d === 'B') { delta += p.ganancia_b; aplicados++; }
+  });
+  const est = Math.max(0, Math.min(100, Math.round(r.score_seguridad_actual + delta)));
+  return { actual: r.score_seguridad_actual, est, aplicados, total: (S.prioridades || []).length };
+}
+
+function renderWiLive() {
+  const e = wiEstimate(); if (!e) { $('wiLive').innerHTML = ''; return; }
+  $('wiLive').innerHTML = `
+    <div class="wi-kpi"><b>${e.actual}</b><span>Postura actual</span></div>
+    <div class="wi-kpi"><b style="color:var(--ok)">${e.est} <small style="font-size:.8rem">(+${e.est - e.actual})</small></b><span>Postura estimada con tus decisiones</span></div>
+    <div class="wi-kpi"><b>${e.aplicados}/${e.total}</b><span>Cambios seleccionados</span></div>
+    <div class="wi-kpi"><b>${e.total - e.aplicados}</b><span>Hallazgos que seguirían abiertos</span></div>`;
+}
+
+function renderWhatIf() {
+  const sec = $('whatifSection');
+  const has = !!(S.resumen && (S.prioridades || []).length);
+  sec.style.display = has ? '' : 'none';
+  if (!has) return;
+  WI.dec = wiDefaults();
+  $('wiOut').innerHTML = '';
+  drawWiTable();
+}
+
+function drawWiTable() {
+  const rows = S.prioridades.map((p) => {
+    const d = WI.dec[p.id] || 'NONE';
+    const radio = (v, label) => `<label><input type="radio" name="dec_${esc(p.id)}" value="${v}" ${d === v ? 'checked' : ''} data-id="${esc(p.id)}"><span>${label}</span></label>`;
+    return `<tr class="${d === 'NONE' ? 'off' : ''}">
+      <td><span class="rank">${p.posicion}</span></td>
+      <td><span class="sev ${esc(p.severidad)}">${esc(p.severidad)}</span></td>
+      <td><b>${esc(p.categoria)}</b><br><span class="meta">${esc(p.id)} · ${esc(p.acl)}</span></td>
+      <td>${esc(p.impacto)} ${p.quick_win ? '<span class="qw">⚡ bajo riesgo</span>' : ''}<br><span class="meta">${p.confirmado_por_batfish ? '✔ Batfish' : 'Semántico'}</span></td>
+      <td><div class="dec-group" role="radiogroup" aria-label="Decisión para ${esc(p.id)}">${radio('A', 'Plan A')}${radio('B', 'Plan B')}${radio('NONE', 'Omitir')}</div></td>
+      <td style="font-family:var(--mono);font-size:.78rem">${d === 'A' ? '+' + p.ganancia_a : d === 'B' ? '+' + p.ganancia_b : '—'}</td></tr>`;
+  }).join('');
+  $('wiTable').innerHTML = `<div style="overflow-x:auto"><table class="wi-table"><thead><tr><th>#</th><th>Severidad</th><th>Hallazgo</th><th>Riesgo de cambio</th><th>Decisión</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('wiTable').querySelectorAll('input[type=radio]').forEach((r) => r.addEventListener('change', () => {
+    WI.dec[r.dataset.id] = r.value;
+    if (r.value !== 'NONE') planSel[r.dataset.id] = r.value;   // sincroniza la pestaña del hallazgo
+    $('wiOut').innerHTML = '';                                   // la simulación previa ya no aplica
+    drawWiTable(); renderFindings();
+  }));
+  renderWiLive();
+}
+
+function wiPreset(kind) {
+  const next = {};
+  S.prioridades.forEach((p) => {
+    next[p.id] = kind === 'A' ? 'A' : kind === 'B' ? 'B' : kind === 'SAFE' ? (p.quick_win ? 'A' : 'NONE') : 'NONE';
+    if (next[p.id] !== 'NONE') planSel[p.id] = next[p.id];
+  });
+  WI.dec = next; $('wiOut').innerHTML = ''; drawWiTable(); renderFindings();
+}
+
+function wiReset() {
+  Object.keys(planSel).forEach((k) => delete planSel[k]);
+  filter = null;
+  WI.dec = wiDefaults(); $('wiOut').innerHTML = '';
+  $('wiIso').checked = true;
+  drawWiTable(); renderFindings();
+  toast('Decisiones restablecidas al Plan A recomendado.', 'warn');
+}
+
+function saveText(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+async function runWhatIf() {
+  if (WI.busy) return;
+  const out = $('wiOut');
+  out.innerHTML = '<div class="empty"><span class="spinner"></span><p style="margin-top:12px">Aplicando tus decisiones sobre la configuración candidata y consultando el Digital Twin…</p></div>';
+  WI.busy = true; $('wiRun').disabled = true;
+  try {
+    const d = await post(`/api/session/${S.id}/whatif`, { decisiones: WI.dec, evaluar_aislamiento: $('wiIso').checked });
+    const p = d.postura;
+    const iso = d.aislamiento;
+    const isoHtml = !iso ? '' : iso.error ? `<div class="alert warn">ℹ️ No se pudo recalcular la matriz de aislamiento: ${esc(iso.error)}</div>` :
+      iso.cambios.length ? `<p class="block-label">Cambios en la matriz de aislamiento</p><table><thead><tr><th>Origen</th><th>Destino</th><th>Antes</th><th>Después</th></tr></thead><tbody>${iso.cambios.map((c) => `
+        <tr><td>${esc(c.origen)}</td><td>${esc(c.destino)}</td><td><span class="cell ${esc(c.antes)}">${esc(c.antes)}</span></td><td><span class="cell ${esc(c.despues)}">${esc(c.despues)}</span></td></tr>`).join('')}</tbody></table>` :
+      '<div class="alert ok">🧱 La matriz de aislamiento entre zonas no cambia con estas decisiones.</div>';
+    const flows = d.cambios.length ? `<table><thead><tr><th>Hallazgo</th><th>ACL</th><th>Ahora</th><th>Línea nueva</th><th>Línea anterior</th></tr></thead><tbody>${d.cambios.map((c) => `
+      <tr><td style="font-family:var(--mono);font-size:.76rem">${esc(c.id_hallazgo || 'conjunto')}</td><td>${esc(c.acl)}</td><td class="${/permit/i.test(c.accion_nueva) ? 'permit' : 'deny'}">${esc(c.accion_nueva)}</td><td style="font-family:var(--mono);font-size:.76rem">${esc(c.linea_nueva)}</td><td style="font-family:var(--mono);font-size:.76rem;color:var(--muted)">${esc(c.linea_anterior)}</td></tr>`).join('')}</tbody></table>` :
+      '<div class="empty">Sin cambios de comportamiento en los filtros comparables.</div>';
+    const cfg = (d.diff_config || []).map((l) => `<span class="${l.startsWith('+') && !l.startsWith('+++') ? 'add' : l.startsWith('-') && !l.startsWith('---') ? 'del' : l.startsWith('@@') ? 'hunk' : 'ctx'}">${esc(l)}</span>`).join('');
+    out.innerHTML = `
+      <div class="wi-summary">
+        <div class="wi-kpi"><b>${p.actual} <span class="wi-arrow">→</span> <span style="color:var(--ok)">${p.proyectado}</span></b><span>Postura estimada (máx. posible ${p.maximo_posible})</span></div>
+        <div class="wi-kpi"><b>${d.aplicados.length}</b><span>Cambios simulados</span></div>
+        <div class="wi-kpi"><b>${d.total_cambios}</b><span>Pares de líneas que cambian de comportamiento</span></div>
+        <div class="wi-kpi"><b>${p.residuales.length}</b><span>Hallazgos que seguirían abiertos</span></div>
+      </div>
+      ${d.aplicados.length ? '' : '<div class="alert warn">No seleccionaste ningún cambio: la red queda exactamente igual.</div>'}
+      ${d.errores.length ? `<div class="alert err">Batfish no pudo comparar: ${esc(d.errores.join(' · '))}</div>` : ''}
+      ${(d.no_verificables || []).length ? `<div class="alert warn">ℹ️ No verificables con compareFilters: ${d.no_verificables.map((n) => `<b>${esc(n.id)}</b>`).join(', ')}. ${esc(d.no_verificables[0].motivo)}</div>` : ''}
+      ${d.aplicados.length ? `<p class="block-label">Flujos que cambian de comportamiento (compareFilters)</p>${flows}${isoHtml}
+      <p class="block-label">Configuración candidata (diff sintáctico)</p><div class="codebox">${cfg || '<span class="ctx">Sin cambios</span>'}</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn" id="wiDlRem">🛠️ Descargar remediación consolidada (.cli)</button>
+        <button class="btn" id="wiDlRoll">⏪ Descargar rollback consolidado (.cli)</button>
+      </div>
+      <p class="meta" style="margin-top:8px">La postura es una <b>estimación</b> (el Plan B aporta ${Math.round(0.6 * 100)}% de la mejora del Plan A); el efecto sobre los flujos sí es verificación formal de Batfish.</p>` : ''}`;
+    if (d.aplicados.length) {
+      $('wiDlRem').addEventListener('click', () => saveText(d.scripts.remediacion, `remediacion_whatif_${S.archivo.replace(/\.[^.]+$/, '')}.cli`));
+      $('wiDlRoll').addEventListener('click', () => saveText(d.scripts.rollback, `rollback_whatif_${S.archivo.replace(/\.[^.]+$/, '')}.cli`));
+    }
+  } catch (e) {
+    out.innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
+  } finally { WI.busy = false; $('wiRun').disabled = false; }
+}
+
 /* ---------------------------------------------------------------- Init */
 document.addEventListener('DOMContentLoaded', () => {
   Topo.init();
@@ -858,6 +988,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btnDiffA').addEventListener('click', () => showDiff('A'));
   $('btnDiffB').addEventListener('click', () => showDiff('B'));
   $('btnMatrix').addEventListener('click', loadMatrix);
+  $('wiPresetA').addEventListener('click', () => wiPreset('A'));
+  $('wiPresetB').addEventListener('click', () => wiPreset('B'));
+  $('wiPresetSafe').addEventListener('click', () => wiPreset('SAFE'));
+  $('wiPresetNone').addEventListener('click', () => wiPreset('NONE'));
+  $('wiReset').addEventListener('click', wiReset);
+  $('wiRun').addEventListener('click', runWhatIf);
   $('btnModel').addEventListener('click', showModel);
   $('btnReach').addEventListener('click', runReachability);
   $('btnTf').addEventListener('click', runTestFilter);

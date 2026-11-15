@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/styles.css?v=3.0">
 </head>
 <body>
 <div class="app">
@@ -194,6 +194,28 @@
         </div>
       </section>
 
+      <section class="section" aria-labelledby="wiTitle" id="whatifSection">
+        <h2 class="section-title" id="wiTitle">🎯 Centro de decisiones What-If · prioridad top-down</h2>
+        <article class="card">
+          <p class="meta">Los hallazgos se ordenan de mayor a menor severidad y, a igual severidad, del cambio menos riesgoso al más riesgoso. Elige un plan por hallazgo y simula el conjunto en el Digital Twin <b>antes</b> de tocar producción.</p>
+          <div class="btn-row" style="margin:12px 0">
+            <button class="btn sm" id="wiPresetA">✅ Todo Plan A (recomendado)</button>
+            <button class="btn sm" id="wiPresetB">🐢 Todo Plan B (conservador)</button>
+            <button class="btn sm" id="wiPresetSafe">⚡ Solo cambios de bajo riesgo</button>
+            <button class="btn sm" id="wiPresetNone">⛔ Ninguno</button>
+            <span class="sep" style="flex:1"></span>
+            <button class="btn sm danger" id="wiReset" title="Vuelve a las decisiones recomendadas y limpia la simulación">↺ Reset</button>
+          </div>
+          <div id="wiTable"></div>
+          <div class="wi-summary" id="wiLive"></div>
+          <div class="btn-row" style="margin-top:14px">
+            <label class="switch-inline"><input type="checkbox" id="wiIso" checked> Recalcular matriz de aislamiento (más lento)</label>
+            <button class="btn primary" id="wiRun">▶ Simular decisiones en el Digital Twin</button>
+          </div>
+          <div id="wiOut"></div>
+        </article>
+      </section>
+
       <section class="section" aria-labelledby="findTitle">
         <h2 class="section-title" id="findTitle">📋 Hallazgos y planes de decisión</h2>
         <div id="aiNotice"></div>
@@ -211,6 +233,6 @@
   </div>
 </div>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=3.0"></script>
 </body>
 </html>
