@@ -12,7 +12,8 @@
 | **Fase 1** | **Vista Previa Pre-Flight, Sintaxis (`initIssues`) y Guía de Demos** | Medio | Alto | ✅ **Completada e Implementada** |
 | **Fase 2** | **Digital Twin Robusto (Fix ASA 500) y Reachability Simbólica (`reachability`, `testFilters`, `routes`, `layer3Edges`)** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-11 / ADR-006) |
 | **Fase 3** | **Priorización Top-Down, Centro de Decisiones What-If y Botón de Reset** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-12 / ADR-007) |
-| **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
+| **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Refactorización de Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
+| **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | **Planificada (Fase 4 / Evolutiva)** |
 | **MEJ-02** | Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi) | Bajo | Alto | **P2 (Alta)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P3 (Evolutiva)** |
@@ -117,3 +118,22 @@
 * **Mejora:**
   1. Habilitar **Context Caching** (`client.caches.create()`) del SDK `google-genai` para mantener en caché permanente las directivas CIS Benchmark y DISA STIG.
   2. Reducir los costos de tokens y la latencia de respuesta a menos de 2 segundos por auditoría en ejecuciones masivas por lotes.
+
+---
+
+### 9. UX Modular por Pestañas (Tabs), Visor Web Nativo del Reporte y Refactorización Estética (MEJ-09)
+* **Contexto:** Actualmente el dashboard muestra todas las secciones en un único scroll vertical extenso (hero, donuts, herramientas Batfish, topología, matriz, reachability simbólica, centro What-If y hallazgos). A medida que la suite incorpora herramientas de análisis formal, la experiencia de usuario se sobrecarga visualmente. Asimismo, para leer el informe ejecutivo completo el operador se ve obligado a descargar el archivo PDF o Markdown, y el formato de reporte actual requiere pulido y optimización visual (tablas de colisión, saltos de página y consistencia tipográfica).
+* **Mejora:**
+  1. **Navegación Modular por Pestañas (Tabs de Primer Nivel):**
+     * Reestructurar el dashboard post-auditoría en vistas organizadas:
+       * 📊 **Postura & Hallazgos:** Indicadores de postura (gauges), donuts de riesgo, filtros interactivos y listado priorizado de vulnerabilidades.
+       * 🎯 **Decisiones What-If:** Centro de decisiones top-down, presets de remediación, simulación en vivo y descarga de scripts `.cli`.
+       * 🌐 **Topología & Simulación:** Lienzo interactivo en Canvas (física elástica 60 FPS), drawer contextual y simulador "El Camino del Paquete".
+       * ⚡ **Herramientas Batfish:** Matriz de aislamiento perimétrico, reachability simbólica (`∀ paquetes`), prueba atómica de ACLs (`testFilters`) e inventario de red (`routes`, `layer3Edges`).
+       * 📄 **Reporte Ejecutivo (Visor Nativo):** Pestaña dedicada con la visualización integral del informe sin requerir descarga de archivos.
+  2. **Visor Web Nativo del Reporte Ejecutivo:**
+     * Renderizar el informe completo formateado directamente en la pestaña del dashboard con diseño editorial cuidado, índice lateral interactivo (tabla de contenidos navegable), tablas de desglose de colisiones y bloques de comandos copiables con un clic.
+  3. **Refactorización y Pulido Integral del Reporte (PDF y Web) — [RECORDATORIO CRÍTICO]:**
+     * Acomodar y estandarizar la generación del informe ejecutivo tanto en `src/pdf_generator.py` como en `src/report_builder.py`.
+     * Resolver desbordes de texto en celdas de tablas, asegurar saltos de página limpios en el PDF sin títulos huérfanos, formatear con elegancia los controles normativos APB y alinear la paleta de colores institucional para entrega C-Level formal de máxima prolijidad.
+

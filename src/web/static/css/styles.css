@@ -133,12 +133,71 @@ body {
 @media (max-width: 1100px) { .hero { grid-template-columns: 1fr 1fr; } .hero .device { grid-column: 1 / -1; } }
 .device h2 { font-size: 1.5rem; }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 14px; }
-.gauge { text-align: center; }
-.gauge svg { width: 150px; height: 150px; }
-.gauge .num { font-size: 2.2rem; font-weight: 700; }
-.gauge .lbl { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.gauge-track { stroke: hsla(215, 25%, 40%, 0.3); }
-.gain { display: inline-block; margin-top: 4px; padding: 3px 10px; border-radius: 99px; font-size: 0.78rem; background: hsla(158, 64%, 48%, 0.15); color: var(--ok); }
+.card.gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 30px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.gauge-wrap {
+  width: 190px;
+  height: 190px;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.gauge svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.gauge-num {
+  font-family: var(--font);
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.gauge-max {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--muted);
+  letter-spacing: 0.05em;
+}
+.gauge-caption {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 50px;
+}
+.gauge .lbl {
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.gauge-track { stroke: hsla(215, 25%, 40%, 0.28); }
+.gain {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: hsla(158, 64%, 48%, 0.16);
+  border: 1px solid hsla(158, 64%, 48%, 0.45);
+  color: var(--ok);
+  letter-spacing: 0.02em;
+}
 .summary-text { margin-top: 16px; font-size: 0.9rem; color: hsl(214, 25%, 80%); }
 
 /* ----- Donuts ----- */

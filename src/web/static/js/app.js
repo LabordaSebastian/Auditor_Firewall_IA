@@ -303,16 +303,23 @@ function render() {
 }
 
 function gauge(id, label, score, color, gain = '') {
-  const C = 2 * Math.PI * 52;
+  const C = 2 * Math.PI * 48;
   const val = score == null ? 0 : score;
   $(id).innerHTML = `
-    <svg viewBox="0 0 120 120" role="img" aria-label="${esc(label)}">
-      <circle class="gauge-track" cx="60" cy="60" r="52" fill="none" stroke-width="9"/>
-      <circle id="${id}Arc" cx="60" cy="60" r="52" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
-        stroke-dasharray="${C}" stroke-dashoffset="${C}" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1.2s ease;filter:drop-shadow(0 0 6px ${color})"/>
-      <text x="60" y="68" text-anchor="middle" class="num" fill="currentColor" style="font-size:30px;font-weight:700">${score == null ? 'N/D' : score}</text>
-    </svg>
-    <div class="lbl">${esc(label)}</div>${gain ? `<span class="gain">${esc(gain)}</span>` : ''}`;
+    <div class="gauge-wrap">
+      <svg viewBox="0 0 120 120" role="img" aria-label="${esc(label)}">
+        <circle class="gauge-track" cx="60" cy="60" r="48" fill="none" stroke-width="10"/>
+        <circle id="${id}Arc" cx="60" cy="60" r="48" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${C}" transform="rotate(-90 60 60)"
+          style="transition:stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);filter:drop-shadow(0 0 8px ${color})"/>
+        <text x="60" y="${score == null ? 60 : 54}" text-anchor="middle" dominant-baseline="central" class="gauge-num" fill="currentColor">${score == null ? 'N/D' : score}</text>
+        ${score != null ? '<text x="60" y="74" text-anchor="middle" dominant-baseline="central" class="gauge-max">/ 100</text>' : ''}
+      </svg>
+    </div>
+    <div class="gauge-caption">
+      <div class="lbl">${esc(label)}</div>
+      ${gain ? `<span class="gain">${esc(gain)}</span>` : ''}
+    </div>`;
   requestAnimationFrame(() => setTimeout(() => { $(id + 'Arc').style.strokeDashoffset = C * (1 - val / 100); }, 60));
 }
 

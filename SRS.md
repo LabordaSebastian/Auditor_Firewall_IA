@@ -171,6 +171,11 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-12.5 (Reset):** El botón *Reset* restablece las decisiones al Plan A recomendado, limpia el resultado de la simulación, las pestañas de plan y los filtros. Se ofrecen además atajos: *Todo A*, *Todo B*, *Solo bajo riesgo* y *Ninguno*.
 * **RF-12.6 (Zero-Leak):** Los comandos se re-sanitizan antes de llegar a Batfish y la respuesta se de-sanitiza localmente.
 
+### RF-13 (Planificado - Fase 4 / Evolutiva): UX Modular por Pestañas, Visor Web de Reporte y Pulido Integral [MEJ-09]
+* **RF-13.1 (Navegación Modular por Pestañas):** Estructurar la visualización de resultados en pestañas de primer nivel (*Postura & Hallazgos*, *Decisiones What-If*, *Topología & Simulación*, *Herramientas Batfish*, *Reporte Ejecutivo*) para optimizar la experiencia de usuario y eliminar el scroll vertical excesivo.
+* **RF-13.2 (Visor Web Nativo del Reporte):** Proveer una vista web completa e integrada del informe ejecutivo directamente en el dashboard, permitiendo la lectura, navegación por secciones y copia de comandos sin necesidad de descargar el archivo PDF o Markdown.
+* **RF-13.3 (Refactorización y Acomodamiento Estético del Reporte):** Reestructurar a fondo el generador de reportes (`src/pdf_generator.py` y `src/report_builder.py`) para corregir desbordes de texto en tablas de colisiones, asegurar saltos de página adecuados en el PDF y garantizar una presentación formal de nivel C-Level.
+
 ---
 
 ## 5. Requisitos No Funcionales
