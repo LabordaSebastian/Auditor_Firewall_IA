@@ -248,6 +248,7 @@ class AuditService:
             "distribucion": {"severidad": dict(sev), "categoria": dict(cat)},
             "matematicos": self.shadowing(s),
             "grafo": s.graph,
+            "topologia": self._deep_desanitize(s.topology.model_dump(mode="json"), s.lookup_map),
             "acls": self.acl_names(s),
             "prioridades": self.priorities(s),
             "decisiones_default": default_decisions(rep) if rep else {},

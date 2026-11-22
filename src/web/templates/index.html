@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css?v=3.1">
+  <link rel="stylesheet" href="/static/css/styles.css?v=4.1">
 </head>
 <body>
 <div class="app">
@@ -85,143 +85,164 @@
         <article class="card gauge" id="gaugeProj"></article>
       </section>
 
-      <section class="section" aria-labelledby="riskTitle">
-        <h2 class="section-title" id="riskTitle">🍩 Distribución gráfica de riesgo</h2>
-        <div class="grid-2">
-          <article class="card"><h2>Matriz de hallazgos por severidad</h2><div class="donut-card" id="donutSev"></div></article>
-          <article class="card"><h2>Taxonomía por tipo de vulnerabilidad</h2><div class="donut-card" id="donutCat"></div></article>
-        </div>
-      </section>
+      <!-- ================= NAVEGACIÓN POR PESTAÑAS (MEJ-09) ================= -->
+      <nav class="mainnav" id="mainNav" role="tablist" aria-label="Secciones del análisis">
+        <button class="mainnav-btn on" role="tab" id="tab-postura" data-tab="postura" aria-selected="true" aria-controls="panel-postura">📊 Postura &amp; hallazgos <span class="nav-count" id="cntFindings"></span></button>
+        <button class="mainnav-btn" role="tab" id="tab-whatif" data-tab="whatif" aria-selected="false" aria-controls="panel-whatif" tabindex="-1" hidden>🎯 Decisiones What-If <span class="nav-count" id="cntWhatif"></span></button>
+        <button class="mainnav-btn" role="tab" id="tab-topologia" data-tab="topologia" aria-selected="false" aria-controls="panel-topologia" tabindex="-1">🌐 Topología &amp; simulación</button>
+        <button class="mainnav-btn" role="tab" id="tab-herramientas" data-tab="herramientas" aria-selected="false" aria-controls="panel-herramientas" tabindex="-1">⚡ Herramientas Batfish</button>
+        <button class="mainnav-btn" role="tab" id="tab-reporte" data-tab="reporte" aria-selected="false" aria-controls="panel-reporte" tabindex="-1">📄 Reporte ejecutivo</button>
+      </nav>
 
-      <section class="section" aria-labelledby="bfTitle">
-        <h2 class="section-title" id="bfTitle">⚡ Herramientas Batfish (Digital Twin)</h2>
-        <div class="card toolbar">
-          <button class="btn" id="btnShadow">🔍 Detectar reglas pisadas (Shadowing)</button>
-          <button class="btn" id="btnExposure">🛡️ Escanear puertos críticos expuestos</button>
-          <button class="btn" id="btnDiffA">🔀 Digital Twin diferencial · Plan A</button>
-          <button class="btn" id="btnDiffB">🔀 Digital Twin diferencial · Plan B</button>
-          <button class="btn" id="btnModel">🗺️ Modelo de red (routes · layer3Edges)</button>
-        </div>
-      </section>
-
-      <section class="section" aria-labelledby="topoTitle">
-        <h2 class="section-title" id="topoTitle">🌐 Grafo topológico interactivo</h2>
-        <div class="topo-layout">
-          <div>
-            <div class="canvas-wrap">
-              <canvas id="topoCanvas" aria-label="Grafo topológico de la red"></canvas>
-              <div class="canvas-legend">
-                <span><i style="background:var(--crit)"></i>WAN / Internet</span>
-                <span><i style="background:var(--accent-2)"></i>Firewall / Router</span>
-                <span><i style="background:var(--med)"></i>DMZ</span>
-                <span><i style="background:var(--ok)"></i>LAN interna</span>
-                <span><i style="background:var(--violet)"></i>Gestión</span>
-              </div>
-              <div class="canvas-hint">Arrastra nodos · rueda = zoom · arrastra el fondo = mover · clic = ficha técnica</div>
-            </div>
-            <div class="drawer" id="drawer"><span class="empty">Selecciona un nodo o enlace para ver su ficha técnica.</span></div>
+      <div class="tab-panel active" id="panel-postura" role="tabpanel" aria-labelledby="tab-postura" data-tab="postura" tabindex="0">
+        <section class="section" aria-labelledby="riskTitle">
+          <h2 class="section-title" id="riskTitle">🍩 Distribución gráfica de riesgo</h2>
+          <div class="grid-2">
+            <article class="card"><h2>Matriz de hallazgos por severidad</h2><div class="donut-card" id="donutSev"></div></article>
+            <article class="card"><h2>Taxonomía por tipo de vulnerabilidad</h2><div class="donut-card" id="donutCat"></div></article>
           </div>
-          <div>
-            <article class="card">
-              <h2>🚀 Camino del paquete</h2>
-              <div class="form-grid">
-                <label class="field">Zona de origen<select id="simSrcZone"></select></label>
-                <label class="field">IP origen<input type="text" id="simSrcIp"></label>
-                <label class="field">Zona destino<select id="simDstZone"></select></label>
-                <label class="field">IP destino<input type="text" id="simDstIp"></label>
-                <label class="field">Servicio
-                  <select id="simService">
-                    <option value="TCP:443">HTTPS · TCP 443</option><option value="TCP:80">HTTP · TCP 80</option>
-                    <option value="TCP:23">Telnet · TCP 23</option><option value="TCP:22">SSH · TCP 22</option>
-                    <option value="TCP:3389">RDP · TCP 3389</option><option value="TCP:445">SMB · TCP 445</option>
-                    <option value="UDP:161">SNMP · UDP 161</option><option value="ICMP:">ICMP · Ping</option>
-                  </select>
-                </label>
-                <label class="field">Puerto personalizado<input type="number" id="simPort" min="1" max="65535" placeholder="opcional"></label>
+        </section>
+
+        <section class="section" aria-labelledby="findTitle">
+          <h2 class="section-title" id="findTitle">📋 Hallazgos y planes de decisión</h2>
+          <div id="aiNotice"></div>
+          <div class="chips" id="filters"></div>
+          <div id="findings"></div>
+        </section>
+      </div>
+      <div class="tab-panel" id="panel-whatif" role="tabpanel" aria-labelledby="tab-whatif" data-tab="whatif" tabindex="0">
+        <section class="section" aria-labelledby="wiTitle" id="whatifSection">
+          <h2 class="section-title" id="wiTitle">🎯 Centro de decisiones What-If · prioridad top-down</h2>
+          <article class="card">
+            <p class="meta">Los hallazgos se ordenan de mayor a menor severidad y, a igual severidad, del cambio menos riesgoso al más riesgoso. Elige un plan por hallazgo y simula el conjunto en el Digital Twin <b>antes</b> de tocar producción.</p>
+            <div class="btn-row" style="margin:12px 0">
+              <button class="btn sm" id="wiPresetA">✅ Todo Plan A (recomendado)</button>
+              <button class="btn sm" id="wiPresetB">🐢 Todo Plan B (conservador)</button>
+              <button class="btn sm" id="wiPresetSafe">⚡ Solo cambios de bajo riesgo</button>
+              <button class="btn sm" id="wiPresetNone">⛔ Ninguno</button>
+              <span class="sep" style="flex:1"></span>
+              <button class="btn sm danger" id="wiReset" title="Vuelve a las decisiones recomendadas y limpia la simulación">↺ Reset</button>
+            </div>
+            <div id="wiTable"></div>
+            <div class="wi-summary" id="wiLive"></div>
+            <div class="btn-row" style="margin-top:14px">
+              <label class="switch-inline"><input type="checkbox" id="wiIso" checked> Recalcular matriz de aislamiento (más lento)</label>
+              <button class="btn primary" id="wiRun">▶ Simular decisiones en el Digital Twin</button>
+            </div>
+            <div id="wiOut"></div>
+          </article>
+        </section>
+      </div>
+      <div class="tab-panel" id="panel-topologia" role="tabpanel" aria-labelledby="tab-topologia" data-tab="topologia" tabindex="0">
+        <section class="section" aria-labelledby="topoTitle">
+          <h2 class="section-title" id="topoTitle">🌐 Grafo topológico interactivo</h2>
+          <div class="topo-layout">
+            <div>
+              <div class="canvas-wrap">
+                <canvas id="topoCanvas" aria-label="Grafo topológico de la red"></canvas>
+                <div class="canvas-legend">
+                  <span><i style="background:var(--crit)"></i>WAN / Internet</span>
+                  <span><i style="background:var(--accent-2)"></i>Firewall / Router</span>
+                  <span><i style="background:var(--med)"></i>DMZ</span>
+                  <span><i style="background:var(--ok)"></i>LAN interna</span>
+                  <span><i style="background:var(--violet)"></i>Gestión</span>
+                </div>
+                <div class="canvas-hint">Arrastra nodos · rueda = zoom · arrastra el fondo = mover · clic = ficha técnica</div>
               </div>
-              <button class="btn primary" id="btnSim">🚀 Simular tráfico en Digital Twin</button>
-              <div class="sim-result" id="simResult"></div>
+              <div class="drawer" id="drawer"><span class="empty">Selecciona un nodo o enlace para ver su ficha técnica.</span></div>
+            </div>
+            <div>
+              <article class="card">
+                <h2>🚀 Camino del paquete</h2>
+                <div class="form-grid">
+                  <label class="field">Zona de origen<select id="simSrcZone"></select></label>
+                  <label class="field">IP origen<input type="text" id="simSrcIp"></label>
+                  <label class="field">Zona destino<select id="simDstZone"></select></label>
+                  <label class="field">IP destino<input type="text" id="simDstIp"></label>
+                  <label class="field">Servicio
+                    <select id="simService">
+                      <option value="TCP:443">HTTPS · TCP 443</option><option value="TCP:80">HTTP · TCP 80</option>
+                      <option value="TCP:23">Telnet · TCP 23</option><option value="TCP:22">SSH · TCP 22</option>
+                      <option value="TCP:3389">RDP · TCP 3389</option><option value="TCP:445">SMB · TCP 445</option>
+                      <option value="UDP:161">SNMP · UDP 161</option><option value="ICMP:">ICMP · Ping</option>
+                    </select>
+                  </label>
+                  <label class="field">Puerto personalizado<input type="number" id="simPort" min="1" max="65535" placeholder="opcional"></label>
+                </div>
+                <button class="btn primary" id="btnSim">🚀 Simular tráfico en Digital Twin</button>
+                <div class="sim-result" id="simResult"></div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="tab-panel" id="panel-herramientas" role="tabpanel" aria-labelledby="tab-herramientas" data-tab="herramientas" tabindex="0">
+        <section class="section" aria-labelledby="bfTitle">
+          <h2 class="section-title" id="bfTitle">⚡ Herramientas Batfish (Digital Twin)</h2>
+          <div class="card toolbar">
+            <button class="btn" id="btnShadow">🔍 Detectar reglas pisadas (Shadowing)</button>
+            <button class="btn" id="btnExposure">🛡️ Escanear puertos críticos expuestos</button>
+            <button class="btn" id="btnDiffA">🔀 Digital Twin diferencial · Plan A</button>
+            <button class="btn" id="btnDiffB">🔀 Digital Twin diferencial · Plan B</button>
+            <button class="btn" id="btnModel">🗺️ Modelo de red (routes · layer3Edges)</button>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="matTitle">
+          <h2 class="section-title" id="matTitle">🧱 Matriz de aislamiento y perímetros</h2>
+          <article class="card">
+            <div class="btn-row" style="margin-bottom:14px">
+              <button class="btn primary" id="btnMatrix">▶ Calcular matriz con Batfish</button>
+              <span class="meta" style="align-self:center">🟢 Aislado · 🟡 Restringido · 🔵 Permitido · 🔴 Fuga perimétrica (puertos críticos desde zona menos confiable)</span>
+            </div>
+            <div id="matrixOut"><span class="empty">Pulsa el botón para evaluar la segmentación entre zonas.</span></div>
+          </article>
+        </section>
+
+        <section class="section" aria-labelledby="symTitle">
+          <h2 class="section-title" id="symTitle">🔭 Reachability simbólica y prueba de filtros</h2>
+          <div class="grid-2">
+            <article class="card">
+              <h2>∀ ¿Existe algún paquete que llegue?</h2>
+              <p class="meta">Batfish explora <b>todo</b> el espacio de paquetes (<code>reachability</code>). "Inalcanzable" es una prueba formal, no una muestra.</p>
+              <div class="form-grid">
+                <label class="field">Zona de origen<select id="reachSrcZone"></select></label>
+                <label class="field">Destino<select id="reachDst"></select></label>
+                <label class="field">IP/CIDR destino (si elegiste "Personalizado")<input type="text" id="reachDstCustom" placeholder="ej. 172.16.50.10"></label>
+                <label class="field">IP/CIDR origen (opcional)<input type="text" id="reachSrcIps" placeholder="por defecto: subred de la zona"></label>
+                <label class="field">Protocolo
+                  <select id="reachProto"><option value="TCP">TCP</option><option value="UDP">UDP</option><option value="ICMP">ICMP</option><option value="ANY">Cualquiera</option></select>
+                </label>
+                <label class="field">Puertos (coma o rango)<input type="text" id="reachPorts" value="21,22,23,80,445,3389"></label>
+              </div>
+              <button class="btn primary" id="btnReach">🔭 Calcular alcanzabilidad</button>
+              <div id="reachOut"></div>
+            </article>
+            <article class="card">
+              <h2>🧪 Probar un paquete contra una ACL</h2>
+              <p class="meta">Evalúa la ACL aislada, sin rutas ni interfaces (<code>testFilters</code>), y muestra la línea exacta que decide.</p>
+              <div class="form-grid">
+                <label class="field">ACL<select id="tfAcl"></select></label>
+                <label class="field">Protocolo
+                  <select id="tfProto"><option value="TCP">TCP</option><option value="UDP">UDP</option><option value="ICMP">ICMP</option></select>
+                </label>
+                <label class="field">IP origen<input type="text" id="tfSrc" value="8.8.8.8"></label>
+                <label class="field">IP destino<input type="text" id="tfDst"></label>
+                <label class="field">Puerto destino<input type="number" id="tfPort" min="1" max="65535" value="22"></label>
+              </div>
+              <button class="btn primary" id="btnTf">🧪 Evaluar paquete</button>
+              <div class="sim-result" id="tfOut"></div>
             </article>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
+      <div class="tab-panel" id="panel-reporte" role="tabpanel" aria-labelledby="tab-reporte" data-tab="reporte" tabindex="0">
+        <section class="section" aria-labelledby="repTitle">
+          <h2 class="section-title" id="repTitle">📄 Reporte ejecutivo</h2>
+          <div id="reportView"><div class="empty">Ejecuta una auditoría para ver el reporte.</div></div>
+        </section>
+      </div>
 
-      <section class="section" aria-labelledby="matTitle">
-        <h2 class="section-title" id="matTitle">🧱 Matriz de aislamiento y perímetros</h2>
-        <article class="card">
-          <div class="btn-row" style="margin-bottom:14px">
-            <button class="btn primary" id="btnMatrix">▶ Calcular matriz con Batfish</button>
-            <span class="meta" style="align-self:center">🟢 Aislado · 🟡 Restringido · 🔵 Permitido · 🔴 Fuga perimétrica (puertos críticos desde zona menos confiable)</span>
-          </div>
-          <div id="matrixOut"><span class="empty">Pulsa el botón para evaluar la segmentación entre zonas.</span></div>
-        </article>
-      </section>
-
-      <section class="section" aria-labelledby="symTitle">
-        <h2 class="section-title" id="symTitle">🔭 Reachability simbólica y prueba de filtros</h2>
-        <div class="grid-2">
-          <article class="card">
-            <h2>∀ ¿Existe algún paquete que llegue?</h2>
-            <p class="meta">Batfish explora <b>todo</b> el espacio de paquetes (<code>reachability</code>). "Inalcanzable" es una prueba formal, no una muestra.</p>
-            <div class="form-grid">
-              <label class="field">Zona de origen<select id="reachSrcZone"></select></label>
-              <label class="field">Destino<select id="reachDst"></select></label>
-              <label class="field">IP/CIDR destino (si elegiste "Personalizado")<input type="text" id="reachDstCustom" placeholder="ej. 172.16.50.10"></label>
-              <label class="field">IP/CIDR origen (opcional)<input type="text" id="reachSrcIps" placeholder="por defecto: subred de la zona"></label>
-              <label class="field">Protocolo
-                <select id="reachProto"><option value="TCP">TCP</option><option value="UDP">UDP</option><option value="ICMP">ICMP</option><option value="ANY">Cualquiera</option></select>
-              </label>
-              <label class="field">Puertos (coma o rango)<input type="text" id="reachPorts" value="21,22,23,80,445,3389"></label>
-            </div>
-            <button class="btn primary" id="btnReach">🔭 Calcular alcanzabilidad</button>
-            <div id="reachOut"></div>
-          </article>
-          <article class="card">
-            <h2>🧪 Probar un paquete contra una ACL</h2>
-            <p class="meta">Evalúa la ACL aislada, sin rutas ni interfaces (<code>testFilters</code>), y muestra la línea exacta que decide.</p>
-            <div class="form-grid">
-              <label class="field">ACL<select id="tfAcl"></select></label>
-              <label class="field">Protocolo
-                <select id="tfProto"><option value="TCP">TCP</option><option value="UDP">UDP</option><option value="ICMP">ICMP</option></select>
-              </label>
-              <label class="field">IP origen<input type="text" id="tfSrc" value="8.8.8.8"></label>
-              <label class="field">IP destino<input type="text" id="tfDst"></label>
-              <label class="field">Puerto destino<input type="number" id="tfPort" min="1" max="65535" value="22"></label>
-            </div>
-            <button class="btn primary" id="btnTf">🧪 Evaluar paquete</button>
-            <div class="sim-result" id="tfOut"></div>
-          </article>
-        </div>
-      </section>
-
-      <section class="section" aria-labelledby="wiTitle" id="whatifSection">
-        <h2 class="section-title" id="wiTitle">🎯 Centro de decisiones What-If · prioridad top-down</h2>
-        <article class="card">
-          <p class="meta">Los hallazgos se ordenan de mayor a menor severidad y, a igual severidad, del cambio menos riesgoso al más riesgoso. Elige un plan por hallazgo y simula el conjunto en el Digital Twin <b>antes</b> de tocar producción.</p>
-          <div class="btn-row" style="margin:12px 0">
-            <button class="btn sm" id="wiPresetA">✅ Todo Plan A (recomendado)</button>
-            <button class="btn sm" id="wiPresetB">🐢 Todo Plan B (conservador)</button>
-            <button class="btn sm" id="wiPresetSafe">⚡ Solo cambios de bajo riesgo</button>
-            <button class="btn sm" id="wiPresetNone">⛔ Ninguno</button>
-            <span class="sep" style="flex:1"></span>
-            <button class="btn sm danger" id="wiReset" title="Vuelve a las decisiones recomendadas y limpia la simulación">↺ Reset</button>
-          </div>
-          <div id="wiTable"></div>
-          <div class="wi-summary" id="wiLive"></div>
-          <div class="btn-row" style="margin-top:14px">
-            <label class="switch-inline"><input type="checkbox" id="wiIso" checked> Recalcular matriz de aislamiento (más lento)</label>
-            <button class="btn primary" id="wiRun">▶ Simular decisiones en el Digital Twin</button>
-          </div>
-          <div id="wiOut"></div>
-        </article>
-      </section>
-
-      <section class="section" aria-labelledby="findTitle">
-        <h2 class="section-title" id="findTitle">📋 Hallazgos y planes de decisión</h2>
-        <div id="aiNotice"></div>
-        <div class="chips" id="filters"></div>
-        <div id="findings"></div>
-      </section>
     </div>
   </main>
 </div>
@@ -233,6 +254,6 @@
   </div>
 </div>
 
-<script src="/static/js/app.js?v=3.1"></script>
+<script src="/static/js/app.js?v=4.1"></script>
 </body>
 </html>

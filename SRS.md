@@ -171,10 +171,10 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-12.5 (Reset):** El botón *Reset* restablece las decisiones al Plan A recomendado, limpia el resultado de la simulación, las pestañas de plan y los filtros. Se ofrecen además atajos: *Todo A*, *Todo B*, *Solo bajo riesgo* y *Ninguno*.
 * **RF-12.6 (Zero-Leak):** Los comandos se re-sanitizan antes de llegar a Batfish y la respuesta se de-sanitiza localmente.
 
-### RF-13 (Planificado - Fase 4 / Evolutiva): UX Modular por Pestañas, Visor Web de Reporte y Pulido Integral [MEJ-09]
-* **RF-13.1 (Navegación Modular por Pestañas):** Estructurar la visualización de resultados en pestañas de primer nivel (*Postura & Hallazgos*, *Decisiones What-If*, *Topología & Simulación*, *Herramientas Batfish*, *Reporte Ejecutivo*) para optimizar la experiencia de usuario y eliminar el scroll vertical excesivo.
-* **RF-13.2 (Visor Web Nativo del Reporte):** Proveer una vista web completa e integrada del informe ejecutivo directamente en el dashboard, permitiendo la lectura, navegación por secciones y copia de comandos sin necesidad de descargar el archivo PDF o Markdown.
-* **RF-13.3 (Refactorización y Acomodamiento Estético del Reporte):** Reestructurar a fondo el generador de reportes (`src/pdf_generator.py` y `src/report_builder.py`) para corregir desbordes de texto en tablas de colisiones, asegurar saltos de página adecuados en el PDF y garantizar una presentación formal de nivel C-Level.
+### RF-13: UX Modular por Pestañas, Visor Web de Reporte y Pulido Integral (`src/web/`) `[MEJ-09 · Fase 4]`
+* **RF-13.1 (Navegación Modular por Pestañas) — ✅ Implementado:** Tras el resumen (equipo, postura y descargas, siempre visibles) los resultados se organizan en pestañas de primer nivel accesibles (`role=tablist`, flechas/Home/End): *Postura & hallazgos*, *Decisiones What-If* (oculta si no hay hallazgos con planes), *Topología & simulación*, *Herramientas Batfish* (matriz, reachability, `testFilters`, modelo de red) y *Reporte ejecutivo*. Cada nueva auditoría vuelve a *Postura*. El grafo se carga al abrir su pestaña (un canvas oculto mide 0 px) y no se anima mientras está oculto.
+* **RF-13.2 (Visor Web Nativo del Reporte) — ✅ Implementado:** La pestaña *Reporte ejecutivo* renderiza en el navegador el informe completo con la misma estructura y estética que el PDF corporativo, siendo **100 % informativo y analítico** (sin bloques de comandos CLI ni estrategias Plan A/Plan B, los cuales residen en las pestañas operativas): portada institucional con ficha del compromiso y barras de postura, 1. Resumen ejecutivo y tabla de severidades/SLA, 2. Distribución gráfica con donuts vectoriales, 3. Alcance, metodología y tabla de interfaces L3, 4. Matriz de priorización top-down (con píldoras *Quick Win* e IDs sin cortes de línea) y 5. Fichas técnicas detalladas con evidencia, tabla de colisión, controles normativos, diagnóstico, beneficio y blast radius, más índice lateral con *scrollspy* y selector *Vista Papel (Idéntica al PDF)*.
+* **RF-13.3 (Refactorización y Acomodamiento Estético del Reporte PDF/Markdown) — ✅ Implementado:** Reestructuración completa de `src/pdf_generator.py` con estética editorial amigable a la vista (paleta suave de alto contraste, restablecimiento explícito de colores de celda `_reset_colors`, alineación izquierda sin huecos de justificación, donuts circulares con `b=None` en `solid_arc`, tablas nativas `fpdf2` con auto-wrap y fichas 100 % informativas sin comandos de remediación) y alineación de `src/report_builder.py`.
 
 ---
 
@@ -398,3 +398,15 @@ cisco-ai-firewall-auditor/
   4. **Postura como estimación rotulada**, no como medición formal: se evitó presentar un puntaje falsamente exacto.
   5. **Reset al Plan A**, el estado recomendado, y limpieza de resultados obsoletos ante cualquier cambio de decisión.
 * **Impacto:** El operador valida combinaciones de cambios, ve qué flujos y qué segmentos cambian antes de tocar producción y descarga scripts a medida con su rollback inverso. Cubierto por `tests/test_prioritization.py`.
+
+
+### ADR-008 (2026-11-21): Navegación por Pestañas, Visor Nativo y Rediseño Corporativo del Reporte (MEJ-09)
+* **Estado:** Aprobado e Implementado (`RF-13.1`, `RF-13.2` y `RF-13.3`).
+* **Contexto:** El dashboard acumulaba ocho secciones en un único scroll y el informe solo se podía leer descargando PDF/Markdown.
+* **Decisión Técnica:**
+  1. **Pestañas sobre el mismo DOM** (paneles `display:none`/`active`) en lugar de rutas o de una SPA: conserva el estado de cada herramienta al cambiar de pestaña y no añade dependencias (RNF de Vanilla JS).
+  2. **Resumen fuera de las pestañas:** equipo, postura y descargas permanecen siempre visibles.
+  3. **Carga diferida del grafo** (`Topo.activate`) y animación pausada en pestañas ocultas.
+  4. **Visor del reporte renderizado en el cliente** a partir del resumen de sesión ya cargado (sin endpoint nuevo ni exposición de datos adicionales); la lógica de tabla de colisión se comparte con las fichas de hallazgos.
+  5. **Prueba estructural** (`tests/test_tabs_ui.py`) que verifica que todo `$('id')` del JS exista y que cada herramienta viva en su panel, para evitar regresiones al mover secciones.
+* **Impacto:** Menor carga visual, lectura del informe sin salir de la aplicación y base para el pulido del PDF (RF-13.3).

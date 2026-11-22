@@ -1,7 +1,8 @@
-import json
+from collections import Counter
 from pathlib import Path
 from typing import Dict, Any
 from src.models import ReporteAuditoriaFirewall, ContextoTopologia
+from src.prioritization import ordered_findings, rank_findings
 from src.sanitizer import ConfigSanitizer
 
 
@@ -58,42 +59,50 @@ class ReportBuilder:
 
     def _render_markdown(self, r: ReporteAuditoriaFirewall, topo: ContextoTopologia) -> str:
         res = r.resumen
+        ranked = rank_findings(r)
+        ordered = ordered_findings(r)
+        sev_counts = Counter(h.severidad.value for h in r.hallazgos)
+        total_h = len(r.hallazgos) or 1
+        gain_total = res.score_seguridad_proyectado - res.score_seguridad_actual
+
         lines = [
-            f"# Informe de Auditoría de Seguridad & Gestión de Cambios",
+            "# Informe de Auditoría de Seguridad de Red y Gestión de Cambios",
+            "> **Clasificación:** `TLP:AMBER · CONFIDENCIAL` | **Verificación Formal:** `Batfish Digital Twin` | **Marcos:** `CIS · DISA STIG · NIST CSF`",
+            "",
             f"**Dispositivo:** `{res.hostname_detectado}` | **Dialecto:** `{res.dialecto_cisco}`  ",
-            f"**Postura de Seguridad Actual:** `{res.score_seguridad_actual}/100` ➔ **Proyectada tras Mitigación:** `{res.score_seguridad_proyectado}/100`  ",
+            f"**Postura de Seguridad Actual:** `{res.score_seguridad_actual}/100` ➔ **Proyectada tras Mitigación:** `{res.score_seguridad_proyectado}/100` (`+{gain_total} pts`)  ",
             f"**Total de Hallazgos Identificados:** `{res.total_hallazgos}`",
             "",
             "---",
             "",
-            "## 1. Resumen Ejecutivo y Gerencial",
+            "## 1. Resumen Ejecutivo y Dictamen de Postura",
             res.resumen_gerencial,
             "",
-            "### Orden Recomendado de Implementación (Impacto Cero / Transición)",
-            "Para minimizar cualquier riesgo de corte, se recomienda aplicar las remediaciones en el siguiente orden:",
-        ]
-
-        for idx, finding_id in enumerate(res.orden_prioridad_implementacion, 1):
-            lines.append(f"{idx}. `{finding_id}`")
-
-        lines.extend([
+            "### 1.1 Resumen de Hallazgos por Nivel de Severidad",
+            "| Severidad | Cantidad | % del Total | SLA Sugerido |",
+            "| :--- | :---: | :---: | :--- |",
+            f"| **CRITICA** | {sev_counts.get('CRITICA', 0)} | {(sev_counts.get('CRITICA', 0) * 100 / total_h) if r.hallazgos else 0:.1f}% | Inmediata (< 24 h) |",
+            f"| **ALTA** | {sev_counts.get('ALTA', 0)} | {(sev_counts.get('ALTA', 0) * 100 / total_h) if r.hallazgos else 0:.1f}% | Urgente (< 72 h) |",
+            f"| **MEDIA** | {sev_counts.get('MEDIA', 0)} | {(sev_counts.get('MEDIA', 0) * 100 / total_h) if r.hallazgos else 0:.1f}% | Planificada (< 14 días) |",
+            f"| **BAJA** | {sev_counts.get('BAJA', 0)} | {(sev_counts.get('BAJA', 0) * 100 / total_h) if r.hallazgos else 0:.1f}% | Mantenimiento (< 30 días) |",
             "",
             "---",
             "",
-            "## 2. Mapa Topológico y Contexto Auditado",
+            "## 2. Alcance Técnico, Metodología y Topología Auditada",
             f"* **Total de Líneas de Configuración:** {topo.total_lineas_config}",
             f"* **ACLs Activas en Interfaces/VTY:** {', '.join(f'`{a}`' for a in topo.acls_activas) if topo.acls_activas else 'Ninguna'}",
             f"* **ACLs Huérfanas (Sin Uso Activo):** {', '.join(f'`{a}`' for a in topo.acls_huerfanas) if topo.acls_huerfanas else 'Ninguna'}",
             f"* **Protección VTY (Line 0-15):** Transport: `{topo.vty_transport_input or 'Inseguro/No configurado'}` | Access-Class: `{topo.vty_access_class or 'Ninguna'}`",
             "",
             "### Interfaces Auditadas:",
-            "| Interfaz | Descripción / Nameif | IP Asignada | Security Level | ACL Entrada | ACL Salida |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- |",
-        ])
+            "| Interfaz | Descripción / Nameif | IP Asignada | Máscara | Security Level | ACL Entrada | ACL Salida |",
+            "| :--- | :--- | :--- | :--- | :---: | :--- | :--- |",
+        ]
 
         for iface_name, iface in topo.interfaces.items():
             lines.append(
                 f"| `{iface_name}` | {iface.descripcion or 'N/D'} | `{iface.ip_address or 'N/D'}` | "
+                f"`{iface.mascara or 'N/D'}` | "
                 f"{iface.security_level if iface.security_level is not None else 'N/D'} | "
                 f"`{iface.acl_in or '-'}` | `{iface.acl_out or '-'}` |"
             )
@@ -102,30 +111,31 @@ class ReportBuilder:
             "",
             "---",
             "",
-            "## 3. Matriz de Hallazgos y Severidad",
-            "| ID | Componente / ACL | Severidad | Categoría | Validado Batfish | Impacto Operativo (Blast Radius) |",
-            "| :--- | :--- | :--- | :--- | :---: | :--- |",
+            "## 3. Matriz de Priorización Top-Down y Hoja de Ruta",
+            "| # | ID | Componente / ACL | Severidad | Categoría | Validado Batfish | Impacto Operativo (Blast Radius) | Pts Plan A |",
+            "| :---: | :--- | :--- | :--- | :--- | :---: | :--- | :---: |",
         ])
 
-        for h in r.hallazgos:
+        gains_map = {item["id"]: item["ganancia_a"] for item in ranked}
+        for pos, h in enumerate(ordered, 1):
             batfish_icon = "✅" if h.confirmado_por_batfish else "⚠️ Semántico"
             lines.append(
-                f"| `{h.id_hallazgo}` | `{h.acl_o_componente}` | **{h.severidad.value}** | "
-                f"{h.categoria_problema} | {batfish_icon} | {h.nivel_impacto_operativo.value} |"
+                f"| **{pos}** | `{h.id_hallazgo}` | `{h.acl_o_componente}` | **{h.severidad.value}** | "
+                f"{h.categoria_problema} | {batfish_icon} | {h.nivel_impacto_operativo.value} | +{gains_map.get(h.id_hallazgo, 0):.2f} |"
             )
 
         lines.extend([
             "",
             "---",
             "",
-            "## 4. Fichas Detalladas de Hallazgos y Planes de Mitigación",
+            "## 4. Fichas Técnicas Detalladas de Hallazgos y Planes de Mitigación",
         ])
 
-        for h in r.hallazgos:
+        for pos, h in enumerate(ordered, 1):
             lines.extend([
-                f"### Hallazgo `{h.id_hallazgo}`: {h.categoria_problema} en `{h.acl_o_componente}`",
+                f"### 4.{pos} [Prioridad #{pos}] Hallazgo `{h.id_hallazgo}`: {h.categoria_problema} en `{h.acl_o_componente}`",
                 f"* **Regla Afectada:** `{h.linea_o_regla_afectada}`",
-                f"* **Severidad:** `{h.severidad.value}` | **Impacto Operativo:** `{h.nivel_impacto_operativo.value}`",
+                f"* **Severidad:** `{h.severidad.value}` | **Verificación:** `{'Confirmado por Batfish' if h.confirmado_por_batfish else 'Semántico (IA)'}` | **Impacto Operativo:** `{h.nivel_impacto_operativo.value}`",
                 "",
             ])
 
@@ -172,27 +182,6 @@ class ReportBuilder:
                 "",
                 f"**Análisis de Blast Radius (Efectos Colaterales):**  ",
                 f"{h.analisis_blast_radius}",
-                "",
-                "#### Opciones de Decisión:",
-                "",
-                f"**A) {h.plan_a_recomendado.nombre_plan}:**  ",
-                f"*Descripción:* {h.plan_a_recomendado.descripcion_accion}  ",
-                f"*Efecto en Red:* {h.plan_a_recomendado.efecto_en_red}",
-                "```cisco",
-                "\n".join(h.plan_a_recomendado.comandos_cli_implementacion),
-                "```",
-                "",
-                f"**B) {h.plan_b_conservador.nombre_plan}:**  ",
-                f"*Descripción:* {h.plan_b_conservador.descripcion_accion}  ",
-                f"*Efecto en Red:* {h.plan_b_conservador.efecto_en_red}",
-                "```cisco",
-                "\n".join(h.plan_b_conservador.comandos_cli_implementacion),
-                "```",
-                "",
-                "**Comandos de Rollback Inmediato:**",
-                "```cisco",
-                "\n".join(h.plan_a_recomendado.comandos_cli_rollback),
-                "```",
                 "",
                 "---",
             ])

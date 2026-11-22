@@ -13,7 +13,7 @@
 | **Fase 2** | **Digital Twin Robusto (Fix ASA 500) y Reachability Simbólica (`reachability`, `testFilters`, `routes`, `layer3Edges`)** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-11 / ADR-006) |
 | **Fase 3** | **Priorización Top-Down, Centro de Decisiones What-If y Botón de Reset** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-12 / ADR-007) |
 | **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Refactorización de Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
-| **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | **Planificada (Fase 4 / Evolutiva)** |
+| **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | ✅ **Completada e Implementada** (RF-13 / ADR-008) |
 | **MEJ-02** | Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi) | Bajo | Alto | **P2 (Alta)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P3 (Evolutiva)** |
@@ -122,6 +122,7 @@
 ---
 
 ### 9. UX Modular por Pestañas (Tabs), Visor Web Nativo del Reporte y Refactorización Estética (MEJ-09)
+* **Estado:** ✅ **Completada e Implementada (2026-11-21)** — Pestañas de primer nivel, visor web nativo idéntico al PDF (con modo papel, donuts vectoriales, tablas y barra superior en bloques de código sin solapamiento del botón *Copiar*) y refactorización integral de `src/pdf_generator.py` y `src/report_builder.py` (RF-13.1, RF-13.2, RF-13.3 / ADR-008).
 * **Contexto:** Actualmente el dashboard muestra todas las secciones en un único scroll vertical extenso (hero, donuts, herramientas Batfish, topología, matriz, reachability simbólica, centro What-If y hallazgos). A medida que la suite incorpora herramientas de análisis formal, la experiencia de usuario se sobrecarga visualmente. Asimismo, para leer el informe ejecutivo completo el operador se ve obligado a descargar el archivo PDF o Markdown, y el formato de reporte actual requiere pulido y optimización visual (tablas de colisión, saltos de página y consistencia tipográfica).
 * **Mejora:**
   1. **Navegación Modular por Pestañas (Tabs de Primer Nivel):**

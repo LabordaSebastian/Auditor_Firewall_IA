@@ -278,6 +278,7 @@ function setupUpload() {
 /* ---------------------------------------------------------------- Render principal */
 function render() {
   $('results').classList.add('visible');
+  Tabs.reset();
   $('hostName').textContent = S.hostname;
   $('hostMeta').textContent = `${S.dialecto} · ${S.archivo} · ` +
     (S.sanitizar ? `🔒 ${S.sanitizacion.ips} IPs y ${S.sanitizacion.secretos} secretos enmascarados` : '⚠️ sin sanitización');
@@ -293,10 +294,13 @@ function render() {
   renderDonuts();
   renderWhatIf();
   renderFindings();
-  Topo.load(S.grafo);
+  Topo.pendingLoad = true;                       // el canvas oculto mide 0 px: se carga al abrir la pestaña
+  if (Tabs.current === 'topologia') Topo.activate();
   setupSim();
   setupSymbolic();
   $('matrixOut').innerHTML = '<span class="empty">Pulsa el botón para evaluar la segmentación entre zonas.</span>';
+  renderReport();
+  updateNavCounts();
   const hasReport = !!S.resumen;
   ['btnPdf', 'btnMd', 'btnRem', 'btnRoll', 'btnDiffA', 'btnDiffB'].forEach((id) => ($(id).disabled = !hasReport));
   $('results').scrollIntoView({ behavior: 'smooth' });
@@ -379,24 +383,28 @@ function diffCode(cmds) {
     return `<span class="add">+ ${esc(c)}</span>`;
   }).join('');
 }
-function codeBox(cmds, asDiff = true) {
+function codeBox(cmds, asDiff = true, label = 'Cisco CLI') {
   const idx = cmdStore.push(cmds.join('\n')) - 1;
-  return `<div class="codebox"><button class="btn sm copy" data-copy="${idx}">Copiar</button>${asDiff ? diffCode(cmds) : esc(cmds.join('\n'))}</div>`;
+  return `<div class="codebox has-bar"><div class="codebox-bar"><span class="codebox-title">${esc(label)}</span><button class="btn sm copy" data-copy="${idx}">📋 Copiar</button></div><div class="codebox-pre">${asDiff ? diffCode(cmds) : esc(cmds.join('\n'))}</div></div>`;
+}
+
+function collisionRows(h) {
+  return h.desglose_visual.map((r) => `<tr>
+      <td><b>${esc(r.rol)}</b></td><td>${esc(r.secuencia)}</td>
+      <td class="${/permit/i.test(r.accion) ? 'permit' : 'deny'}">${/permit/i.test(r.accion) ? '🟢' : '🔴'} ${esc(r.accion.toUpperCase())}</td>
+      <td>${esc(r.protocolo)}</td><td>${esc(r.origen)}</td><td>${esc(r.destino)}</td><td>${esc(r.puerto)}</td><td>${esc(r.estado_flujo)}</td></tr>`).join('');
 }
 
 function findingCard(h) {
   const sel = planSel[h.id_hallazgo] || 'A';
   const plan = sel === 'A' ? h.plan_a_recomendado : h.plan_b_conservador;
-  const rows = h.desglose_visual.map((r) => `<tr>
-      <td><b>${esc(r.rol)}</b></td><td>${esc(r.secuencia)}</td>
-      <td class="${/permit/i.test(r.accion) ? 'permit' : 'deny'}">${/permit/i.test(r.accion) ? '🟢' : '🔴'} ${esc(r.accion.toUpperCase())}</td>
-      <td>${esc(r.protocolo)}</td><td>${esc(r.origen)}</td><td>${esc(r.destino)}</td><td>${esc(r.puerto)}</td><td>${esc(r.estado_flujo)}</td></tr>`).join('');
+  const rows = collisionRows(h);
   return `<article class="card finding ${planSel['_open_' + h.id_hallazgo] ? 'open' : ''}" data-id="${esc(h.id_hallazgo)}">
     <div class="finding-head"><span class="chev">▶</span>${rankOf(h.id_hallazgo) ? `<span class="rank sm" title="Prioridad de implementación">${rankOf(h.id_hallazgo)}</span>` : ''}<span class="sev ${esc(h.severidad)}">${esc(h.severidad)}</span>
       <h3>${esc(h.categoria_problema)} · <span style="color:var(--muted)">${esc(h.acl_o_componente)}</span></h3>
       <span class="id">${esc(h.id_hallazgo)}</span>${h.confirmado_por_batfish ? '<span class="badge-zero">✔ Batfish</span>' : '<span class="badge-zero off">Semántico</span>'}</div>
     <div class="finding-body">
-      <p class="block-label">Regla afectada</p><div class="codebox">${esc(h.linea_o_regla_afectada)}</div>
+      <p class="block-label">Regla afectada</p>${codeBox([h.linea_o_regla_afectada], false, 'Regla / Directiva detectada')}
       ${rows ? `<p class="block-label">Comparativa y colisión de reglas</p><div style="overflow-x:auto"><table><thead><tr><th>Rol</th><th>Línea</th><th>Acción</th><th>Proto</th><th>Origen</th><th>Destino</th><th>Puerto</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
       ${h.punto_critico_error ? `<div class="critical-point">⚠️ <b>Punto crítico del error:</b> ${esc(h.punto_critico_error)}</div>` : ''}
       <p class="block-label">Controles normativos incumplidos</p>
@@ -540,6 +548,7 @@ async function loadMatrix() {
       }).join('')}</tr>`).join('')}</tbody></table></div>`;
     $('matrixOut').querySelectorAll('.cell').forEach((c) => c.addEventListener('click', () => {
       $('simSrcZone').value = c.dataset.o; $('simDstZone').value = c.dataset.t;
+      Tabs.show('topologia');
       fillIps(); Topo.highlight(c.dataset.o, c.dataset.t);
       $('topoTitle').scrollIntoView({ behavior: 'smooth' });
     }));
@@ -687,7 +696,7 @@ const showModel = () => batfishModal('Modelo de red en Batfish (routes · layer3
 
 /* ---------------------------------------------------------------- Grafo topológico con física elástica */
 const Topo = {
-  cv: null, cx: null, nodes: [], links: [], byId: {}, scale: 1, ox: 0, oy: 0, drag: null, pan: null,
+  pendingLoad: false, cv: null, cx: null, nodes: [], links: [], byId: {}, scale: 1, ox: 0, oy: 0, drag: null, pan: null,
   selected: null, hover: null, packets: [], ripples: [], hl: [], raf: null, w: 0, h: 0, dpr: 1,
 
   init() {
@@ -699,6 +708,7 @@ const Topo = {
     this.cv.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
   },
   resize() {
+    if (!this.cv.clientWidth) return;               // pestaña oculta: conservar la última medida válida
     this.dpr = window.devicePixelRatio || 1;
     this.w = this.cv.clientWidth; this.h = this.cv.clientHeight;
     this.cv.width = this.w * this.dpr; this.cv.height = this.h * this.dpr;
@@ -717,7 +727,10 @@ const Topo = {
     $('drawer').innerHTML = '<span class="empty">Selecciona un nodo o enlace para ver su ficha técnica.</span>';
     if (!this.raf) this.loop();
   },
-  loop() { this.step(); this.draw(); this.raf = requestAnimationFrame(() => this.loop()); },
+  activate() {
+    if (this.pendingLoad && S) { this.pendingLoad = false; this.load(S.grafo); } else { this.resize(); }
+  },
+  loop() { if (this.cv.offsetParent !== null) { this.step(); this.draw(); } this.raf = requestAnimationFrame(() => this.loop()); },
 
   step() {
     const N = this.nodes, cx = this.w / 2, cy = this.h / 2;
@@ -886,6 +899,7 @@ function renderWhatIf() {
   const sec = $('whatifSection');
   const has = !!(S.resumen && (S.prioridades || []).length);
   sec.style.display = has ? '' : 'none';
+  $('tab-whatif').hidden = !has;
   if (!has) return;
   WI.dec = wiDefaults();
   $('wiOut').innerHTML = '';
@@ -981,9 +995,325 @@ async function runWhatIf() {
   } finally { WI.busy = false; $('wiRun').disabled = false; }
 }
 
+/* ---------------------------------------------------------------- Navegación por pestañas (MEJ-09) */
+const TAB_IDS = ['postura', 'whatif', 'topologia', 'herramientas', 'reporte'];
+const Tabs = {
+  current: 'postura',
+  init() {
+    $('mainNav').querySelectorAll('.mainnav-btn').forEach((b) => {
+      b.addEventListener('click', () => this.show(b.dataset.tab));
+      b.addEventListener('keydown', (e) => this.onKey(e));
+    });
+  },
+  available() { return TAB_IDS.filter((t) => !$('tab-' + t).hidden); },
+  onKey(e) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const list = this.available();
+    let i = list.indexOf(this.current);
+    if (e.key === 'ArrowRight') i = (i + 1) % list.length;
+    else if (e.key === 'ArrowLeft') i = (i - 1 + list.length) % list.length;
+    else i = e.key === 'Home' ? 0 : list.length - 1;
+    this.show(list[i], { focus: true });
+  },
+  show(name, opts = {}) {
+    if (!TAB_IDS.includes(name) || $('tab-' + name).hidden) name = 'postura';
+    this.current = name;
+    TAB_IDS.forEach((t) => {
+      const on = t === name, btn = $('tab-' + t);
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.tabIndex = on ? 0 : -1;
+      $('panel-' + t).classList.toggle('active', on);
+    });
+    if (name === 'topologia') Topo.activate();
+    if (opts.focus) $('tab-' + name).focus();
+  },
+  reset() { this.show('postura'); },
+};
+
+function updateNavCounts() {
+  $('cntFindings').textContent = S.hallazgos.length || '';
+  $('cntWhatif').textContent = (S.prioridades || []).length || '';
+}
+
+/* ---------------------------------------------------------------- Visor nativo del reporte ejecutivo (idéntico al PDF, 100 % informativo) */
+let repObserver = null;
+let repPaperMode = false;
+
+const REP_SEV_META = {
+  CRITICA: { sla: 'Inmediata (< 24 h)', desc: 'Exposición directa o bypass de controles con riesgo inminente de compromiso.' },
+  ALTA: { sla: 'Urgente (< 72 h)', desc: 'Debilidad severa en perímetro o segmentación explotable sin autenticación fuerte.' },
+  MEDIA: { sla: 'Planificada (< 14 días)', desc: 'Brecha de defensa en profundidad, trazabilidad o reglas enmascaradas (shadowing).' },
+  BAJA: { sla: 'Mantenimiento (< 30 días)', desc: 'Higiene de configuración, reglas obsoletas o endurecimiento preventivo.' },
+};
+
+function maturityLabel(score) {
+  if (score == null) return 'N/D';
+  if (score < 40) return 'CRÍTICA / VULNERABLE';
+  if (score < 70) return 'MODERADA / CON BRECHAS';
+  if (score < 90) return 'ROBUSTA / CONTROLADA';
+  return 'ÓPTIMA / HARDENED';
+}
+
+function repDonutSvg(items) {
+  const total = items.reduce((a, d) => a + d.count, 0);
+  if (!total) return '<div class="empty">Sin datos para graficar.</div>';
+  let acc = 0;
+  const gap = items.length > 1 ? 0.6 : 0;
+  const segs = items.map((d) => {
+    const pct = (d.count / total) * 100;
+    const len = Math.max(pct - gap, 0.1);
+    const s = `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${d.color}" stroke-width="6.2" stroke-dasharray="${len} ${100 - len}" stroke-dashoffset="${-acc}"></circle>`;
+    acc += pct;
+    return s;
+  }).join('');
+  const leg = items.map((d) => `<div class="rep-leg-row"><i style="background:${d.color}"></i><span>${esc(d.label)}</span><b>${d.count} (${((d.count * 100) / total).toFixed(1)}%)</b></div>`).join('');
+  return `<div class="rep-donut-box">
+    <div class="rep-donut-svg"><svg viewBox="0 0 42 42" style="transform:rotate(-90deg)">${segs}</svg>
+      <div class="rep-donut-center"><b>${total}</b><span>HALLAZGOS</span></div></div>
+    <div class="rep-donut-leg">${leg}</div></div>`;
+}
+
+function repFinding(h) {
+  const pos = rankOf(h.id_hallazgo) || 1, rows = collisionRows(h);
+  const prioItem = (S.prioridades || []).find((p) => p.id === h.id_hallazgo);
+  const gainA = prioItem ? `+${Number(prioItem.ganancia_a).toFixed(2)} pts` : 'N/D';
+  const verif = h.confirmado_por_batfish ? '✔ Confirmado por Batfish' : 'Semántico (IA Normativa)';
+  const colTitle = (h.desglose_visual || []).length > 1
+    ? 'Comparativa y Colisión de Reglas (Shadowing / Redundancia)'
+    : 'Desglose Estructural de la Regla Afectada';
+  return `<article class="rep-block rep-finding card" id="rep-${esc(h.id_hallazgo)}">
+    <header class="rep-fbanner ${esc(h.severidad)}">
+      <span class="rep-fnum">5.${pos} [Prioridad #${pos}]</span>
+      <span class="rep-fid">${esc(h.id_hallazgo)}</span>
+      <span class="rep-fsev">SEVERIDAD ${esc(h.severidad)}</span>
+      <h3 class="rep-ftitle">${esc(h.categoria_problema)}</h3>
+    </header>
+    <div class="rep-fbody">
+      <div class="rep-fmeta">
+        <div><span>Componente / ACL</span><b>${esc(h.acl_o_componente)}</b></div>
+        <div><span>Método de Verificación</span><b>${esc(verif)}</b></div>
+        <div><span>Riesgo Operativo (Blast Radius)</span><b>${esc(h.nivel_impacto_operativo)}</b></div>
+        <div><span>Impacto en Postura</span><b style="color:var(--ok)">${esc(gainA)}</b></div>
+      </div>
+      <p class="block-label">Regla o directiva auditada (Evidencia en configuración)</p>
+      <div class="rep-evidence">${esc(h.linea_o_regla_afectada)}</div>
+      ${rows ? `<p class="block-label">${esc(colTitle)}</p><div style="overflow-x:auto"><table class="rep-table"><thead><tr><th>Rol</th><th>Línea</th><th>Acción</th><th>Proto</th><th>Origen</th><th>Destino</th><th>Puerto</th><th>Estado del Flujo</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+      ${h.punto_critico_error ? `<div class="critical-point">⚠️ <b>PUNTO CRÍTICO DEL ERROR:</b> ${esc(h.punto_critico_error)}</div>` : ''}
+      <p class="block-label">Controles normativos incumplidos (CIS / DISA STIG / NIST CSF)</p>
+      <ul class="ctrl-list">${h.controles_normativos.map((c) => `<li>${esc(c)}</li>`).join('') || '<li>Sin controles específicos asignados.</li>'}</ul>
+      <div class="rep-narrative-grid">
+        <div class="rep-nbox"><p class="block-label" style="margin-top:0">Diagnóstico técnico y vector de riesgo</p><p>${esc(h.diagnostico_tecnico)}</p></div>
+        <div class="rep-nbox"><p class="block-label" style="margin-top:0">Beneficio de mitigación (cómo mejora la red)</p><p>${esc(h.como_mejora_la_red)}</p></div>
+        <div class="rep-nbox"><p class="block-label" style="margin-top:0">Análisis de Blast Radius (${esc(h.nivel_impacto_operativo)})</p><p>${esc(h.analisis_blast_radius)}</p></div>
+      </div>
+    </div>
+  </article>`;
+}
+
+function printReport() {
+  document.body.classList.add('print-report');
+  const done = () => { document.body.classList.remove('print-report'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  window.print();
+}
+
+function renderReport() {
+  const el = $('reportView');
+  if (repObserver) { repObserver.disconnect(); repObserver = null; }
+  if (!S.resumen) {
+    el.innerHTML = `<div class="alert warn">⚠️ El reporte ejecutivo requiere el análisis de IA${S.error_ia ? ': ' + esc(S.error_ia) : ' (desactivado en esta auditoría)'}. Mientras tanto se muestran las anomalías formales de Batfish.</div>` +
+      (S.matematicos.length ? `<article class="card" style="margin-top:14px"><h2>Anomalías confirmadas por Batfish</h2>${mathTable(S.matematicos)}</article>` : '<div class="empty">Sin hallazgos.</div>');
+    return;
+  }
+  const r = S.resumen, list = S.hallazgos, prio = S.prioridades || [], sev = S.distribucion.severidad;
+  const topo = S.topologia || { interfaces: {}, acls_activas: S.acls || [], acls_huerfanas: [], total_lineas_config: 0 };
+  const ifaces = Object.entries(topo.interfaces || {});
+  const today = new Date().toISOString().slice(0, 10);
+  const gain = r.score_seguridad_proyectado - r.score_seguridad_actual;
+  const totalH = list.length || 1;
+  const origin = { gemini: 'Google Gemini + Batfish Digital Twin', cache: 'Caché Local Validada + Batfish Digital Twin', none: 'Sin IA' }[S.fuente_reporte] || S.fuente_reporte;
+
+  const sevItems = ['CRITICA', 'ALTA', 'MEDIA', 'BAJA'].filter((k) => sev[k]).map((k) => ({ key: k, label: SEV[k].label, count: sev[k], color: SEV[k].color }));
+  const catItems = Object.entries(S.distribucion.categoria || {}).sort((a, b) => b[1] - a[1]).map(([k, v], i) => ({ key: k, label: k, count: v, color: CAT_COLORS[i % CAT_COLORS.length] }));
+
+  const sevTableRows = ['CRITICA', 'ALTA', 'MEDIA', 'BAJA'].map((k) => {
+    const cnt = sev[k] || 0;
+    const pct = list.length ? ((cnt * 100) / totalH).toFixed(1) : '0.0';
+    return `<tr><td><span class="sev ${k}">${k}</span></td><td><b>${cnt}</b></td><td>${pct}%</td><td>${esc(REP_SEV_META[k].sla)}</td><td>${esc(REP_SEV_META[k].desc)}</td></tr>`;
+  }).join('');
+
+  const ifaceRows = ifaces.length ? ifaces.map(([name, i]) => `<tr>
+    <td style="font-family:var(--mono)"><b>${esc(name)}</b></td><td>${esc(i.descripcion || 'N/D')}</td>
+    <td style="font-family:var(--mono)">${esc(i.ip_address || 'N/D')}</td><td style="font-family:var(--mono)">${esc(i.mascara || 'N/D')}</td>
+    <td style="font-family:var(--mono)">${esc(i.acl_in || '-')}</td><td style="font-family:var(--mono)">${esc(i.acl_out || '-')}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="empty">Sin interfaces L3 registradas.</td></tr>';
+
+  const prioRows = prio.map((p) => `<tr><td><span class="rank sm">${p.posicion}</span></td>
+    <td class="nowrap-cell"><a href="#" class="rep-link" data-target="rep-${esc(p.id)}">${esc(p.id)}</a></td>
+    <td class="nowrap-cell"><span class="sev ${esc(p.severidad)}">${esc(p.severidad)}</span></td><td>${esc(p.acl)}</td>
+    <td><b>${esc(p.categoria)}</b></td>
+    <td class="nowrap-cell"><div class="risk-cell"><span>${esc(p.impacto)}</span>${p.quick_win ? '<span class="qw">⚡ Quick Win</span>' : ''}</div></td>
+    <td class="nowrap-cell" style="font-family:var(--mono);font-size:.78rem;color:var(--ok)"><b>+${Number(p.ganancia_a).toFixed(2)}</b></td></tr>`).join('');
+
+  const toc = [
+    ['rep-portada', 'Portada Institucional'],
+    ['rep-resumen', '1. Resumen Ejecutivo'],
+    ['rep-riesgo', '2. Distribución de Riesgo'],
+    ['rep-topologia', '3. Alcance y Topología'],
+    ['rep-prioridad', '4. Matriz Top-Down'],
+    ...list.map((h) => {
+      const pos = rankOf(h.id_hallazgo);
+      return [`rep-${h.id_hallazgo}`, `5.${pos || ''} ${h.id_hallazgo} · ${h.categoria_problema}`, h.severidad];
+    }),
+  ];
+
+  const vtyText = `Transport: ${topo.vty_transport_input || 'No restringido'} | ACL: ${topo.vty_access_class || 'Ninguna'}`;
+
+  el.innerHTML = `<div class="rep-actions">
+      <button class="btn primary" data-dl="pdf">📄 Descargar PDF Oficial</button>
+      <button class="btn" data-dl="md">📝 Descargar Markdown</button>
+      <button class="btn" id="btnRepPrint">🖨️ Imprimir / Vista A4</button>
+      <button class="btn" id="btnRepPaper">${repPaperMode ? '🌙 Cambiar a Vista Oscura' : '📄 Vista Papel (Idéntica al PDF)'}</button>
+    </div>
+    <div class="report-layout">
+      <nav class="report-toc card" aria-label="Índice del reporte"><p class="block-label" style="margin-top:0">Índice del Informe</p>
+        ${toc.map(([id, label, s]) => `<a href="#" data-target="${esc(id)}">${s ? `<i class="dot-sev ${esc(s)}"></i>` : ''}${esc(label)}</a>`).join('')}</nav>
+      <div class="report-doc ${repPaperMode ? 'paper-mode' : ''}" id="reportDoc">
+        <!-- PORTADA INSTITUCIONAL (Idéntica al PDF) -->
+        <section class="rep-block rep-sheet card" id="rep-portada">
+          <div class="rep-hero-banner">
+            <div class="rep-hero-top">
+              <span class="rep-tlp">TLP:AMBER | CONFIDENCIAL — USO EXCLUSIVO</span>
+              <span class="rep-ref">REF: AUDIT-${today.replace(/-/g, '')}-${esc(r.hostname_detectado || S.hostname)}</span>
+            </div>
+            <p class="rep-practice">PRÁCTICA DE CIBERSEGURIDAD DE REDES &amp; VERIFICACIÓN FORMAL</p>
+            <h2>Informe de Auditoría de Seguridad de Red y Gestión de Cambios</h2>
+            <p class="rep-hero-sub">Evaluación formal matemática con Digital Twin (Batfish) y análisis normativo de configuraciones bajo estándares CIS Benchmarks, DISA STIG y NIST Cybersecurity Framework.</p>
+          </div>
+          <div class="rep-sheet-body">
+            <h3 class="rep-h2">Ficha Técnica del Compromiso (Engagement Overview)</h3>
+            <div style="overflow-x:auto">
+              <table class="rep-meta-table">
+                <tbody>
+                  <tr><th>Activo Auditado (Hostname)</th><td><b>${esc(r.hostname_detectado || S.hostname)}</b></td><th>Plataforma / Dialecto</th><td>${esc(r.dialecto_cisco || S.dialecto)}</td></tr>
+                  <tr><th>Fecha de Emisión</th><td>${esc(today)}</td><th>Total de Hallazgos</th><td><b>${list.length}</b> vulnerabilidades / brechas</td></tr>
+                  <tr><th>Interfaces / ACLs Activas</th><td>${ifaces.length} interfaces | ${(topo.acls_activas || []).length} ACLs</td><th>ACLs Huérfanas / Líneas</th><td>${(topo.acls_huerfanas || []).length} huérfanas | ${topo.total_lineas_config || 'N/D'} líneas</td></tr>
+                  <tr><th>Plano de Gestión VTY</th><td>${esc(vtyText)}</td><th>Marcos de Referencia</th><td>CIS Benchmark · DISA STIG · NIST CSF</td></tr>
+                  <tr><th>Archivo Auditado</th><td style="font-family:var(--mono)">${esc(S.archivo)}</td><th>Motor &amp; Privacidad</th><td>${esc(origin)} · ${S.sanitizar ? '🔒 Zero-Leak RFC 5737' : '⚠️ Sin sanitizar'}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 class="rep-h2" style="margin-top:18px">Dictamen Cuantitativo de Postura de Seguridad (Escala 0 – 100)</h3>
+            <div class="rep-posture-bars">
+              <div class="rep-pbar-row">
+                <div class="rep-pbar-lbl"><b>Postura Actual: ${r.score_seguridad_actual}/100</b><span class="pbadge crit">${maturityLabel(r.score_seguridad_actual)}</span></div>
+                <div class="rep-pbar-track"><div class="rep-pbar-fill crit" style="width:${Math.max(2, r.score_seguridad_actual)}%"></div></div>
+              </div>
+              <div class="rep-pbar-row">
+                <div class="rep-pbar-lbl"><b>Postura Proyectada tras Mitigación: ${r.score_seguridad_proyectado}/100</b><span class="pbadge ok">${maturityLabel(r.score_seguridad_proyectado)} (+${gain} pts)</span></div>
+                <div class="rep-pbar-track"><div class="rep-pbar-fill ok" style="width:${Math.max(2, r.score_seguridad_proyectado)}%"></div></div>
+              </div>
+            </div>
+            <div class="rep-cert-box">
+              <b>ALCANCE DEL INFORME EJECUTIVO Y CERTIFICACIÓN METODOLÓGICA</b>
+              <ol>
+                <li><b>Propósito Informativo:</b> Este documento presenta el diagnóstico ejecutivo y técnico de las vulnerabilidades detectadas. Los scripts operativos de remediación y rollback (<code>.cli</code>) se gestionan por separado en el Centro de Decisiones What-If.</li>
+                <li><b>Privacidad Zero-Leak (RFC 5737):</b> Las direcciones IPv4 públicas y secretos fueron enmascarados localmente antes del análisis semántico y restaurados en este entregable.</li>
+                <li><b>Verificación Formal Matemática:</b> La alcanzabilidad de reglas (<code>filterLineReachability</code>), exposición de puertos (<code>searchFilters</code>) y aislamiento de zonas (<code>reachability</code>) fueron verificados en un Digital Twin de Batfish.</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <!-- 1. RESUMEN EJECUTIVO -->
+        <article class="rep-block card" id="rep-resumen">
+          <h3 class="rep-h1">1. Resumen Ejecutivo y Dictamen de Postura</h3>
+          <h4 class="rep-h2">1.1 Dictamen Gerencial</h4>
+          <p class="rep-summary">${esc(r.resumen_gerencial)}</p>
+          <h4 class="rep-h2" style="margin-top:16px">1.2 Resumen de Hallazgos por Nivel de Severidad</h4>
+          <div style="overflow-x:auto">
+            <table class="rep-table">
+              <thead><tr><th>Severidad</th><th>Cant.</th><th>% Total</th><th>SLA Sugerido</th><th>Definición de Impacto Corporativo</th></tr></thead>
+              <tbody>${sevTableRows}</tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- 2. DISTRIBUCIÓN GRÁFICA DE RIESGO -->
+        <article class="rep-block card" id="rep-riesgo">
+          <h3 class="rep-h1">2. Distribución Gráfica de Riesgo y Taxonomía</h3>
+          <div class="grid-2">
+            <div><h4 class="rep-h2">2.1 Matriz de Hallazgos por Severidad</h4>${repDonutSvg(sevItems)}</div>
+            <div><h4 class="rep-h2">2.2 Taxonomía por Vector de Vulnerabilidad</h4>${repDonutSvg(catItems)}</div>
+          </div>
+        </article>
+
+        <!-- 3. ALCANCE, METODOLOGÍA Y TOPOLOGÍA -->
+        <article class="rep-block card" id="rep-topologia">
+          <h3 class="rep-h1">3. Alcance Técnico, Metodología y Topología Auditada</h3>
+          <h4 class="rep-h2">3.1 Superficie de Control y Plano de Gestión</h4>
+          <p style="font-size:.88rem;margin-bottom:6px"><b>ACLs activas en interfaces/VTY:</b> ${esc((topo.acls_activas || []).join(', ') || 'Ninguna')}</p>
+          <p style="font-size:.88rem;margin-bottom:6px"><b>ACLs huérfanas (sin aplicar):</b> ${esc((topo.acls_huerfanas || []).join(', ') || 'Ninguna')}</p>
+          <p style="font-size:.88rem;margin-bottom:14px"><b>Seguridad VTY (line vty 0 15):</b> Transport input = <code>${esc(topo.vty_transport_input || 'No restringido')}</code> | Access-class = <code>${esc(topo.vty_access_class || 'Sin filtro ACL')}</code></p>
+          <h4 class="rep-h2">3.2 Inventario de Interfaces y Perímetros L3</h4>
+          <div style="overflow-x:auto">
+            <table class="rep-table">
+              <thead><tr><th>Interfaz</th><th>Descripción / Nameif</th><th>Dirección IP</th><th>Máscara</th><th>ACL In</th><th>ACL Out</th></tr></thead>
+              <tbody>${ifaceRows}</tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- 4. MATRIZ DE PRIORIZACIÓN TOP-DOWN -->
+        <article class="rep-block card" id="rep-prioridad">
+          <h3 class="rep-h1">4. Matriz de Priorización Top-Down y Hoja de Ruta</h3>
+          <p class="meta">Los hallazgos se ordenan por severidad descendente y, a igual severidad, priorizando el cambio de menor riesgo operativo (Quick Wins de impacto NULO o BAJO primero) y aquellos confirmados formalmente por Batfish.</p>
+          <div style="overflow-x:auto">
+            <table class="rep-table">
+              <thead><tr><th>#</th><th>ID Hallazgo</th><th>Severidad</th><th>Componente</th><th>Categoría / Vector</th><th>Riesgo Cambio</th><th>Impacto</th></tr></thead>
+              <tbody>${prioRows}</tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- 5. FICHAS TÉCNICAS DETALLADAS -->
+        <article class="rep-block card" id="rep-hallazgos" style="padding-bottom:12px">
+          <h3 class="rep-h1" style="margin-bottom:4px">5. Fichas Técnicas Detalladas de Hallazgos</h3>
+          <p class="meta" style="margin:0">Dossiers técnicos ordenados por prioridad de implementación con evidencia, tabla de colisión, controles normativos, diagnóstico y análisis de impacto.</p>
+        </article>
+        ${list.map(repFinding).join('')}
+      </div></div>`;
+
+  el.querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => (b.dataset.dl === 'pdf'
+    ? download(`/api/session/${S.id}/pdf`, 'auditoria.pdf') : download(`/api/session/${S.id}/markdown`, 'auditoria.md'))));
+  $('btnRepPrint').addEventListener('click', printReport);
+  $('btnRepPaper').addEventListener('click', () => {
+    repPaperMode = !repPaperMode;
+    $('reportDoc').classList.toggle('paper-mode', repPaperMode);
+    $('btnRepPaper').textContent = repPaperMode ? '🌙 Cambiar a Vista Oscura' : '📄 Vista Papel (Idéntica al PDF)';
+  });
+  el.querySelectorAll('[data-target]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.getElementById(a.dataset.target);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  if ('IntersectionObserver' in window) {   // scrollspy: resalta en el índice la sección visible
+    const links = new Map([...el.querySelectorAll('.report-toc a')].map((a) => [a.dataset.target, a]));
+    repObserver = new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      links.forEach((a) => a.classList.remove('on'));
+      const a = links.get(en.target.id); if (a) a.classList.add('on');
+    }), { rootMargin: '-15% 0px -75% 0px' });
+    el.querySelectorAll('.rep-block').forEach((n) => repObserver.observe(n));
+  }
+}
+
 /* ---------------------------------------------------------------- Init */
 document.addEventListener('DOMContentLoaded', () => {
   Topo.init();
+  Tabs.init();
   setupUpload();
   refreshStatus(); setInterval(refreshStatus, 30000);
   $('modalClose').addEventListener('click', closeModal);
