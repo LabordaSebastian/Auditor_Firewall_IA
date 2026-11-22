@@ -15,6 +15,7 @@
 | **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Refactorización de Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
 | **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | ✅ **Completada e Implementada** (RF-13 / ADR-008) |
 | **MEJ-02** | **Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi)** | Bajo | Alto | ✅ **Completada e Implementada** (RF-14) |
+| **MEJ-10** | **Desarrollo de Laboratorio en Cisco Packet Tracer y Validación Empírica End-to-End** | Medio | Muy Alto | **Siguiente / Prioridad Actual (P1)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P3 (Evolutiva)** |
 | **MEJ-08** | Optimización de Inferencia y Context Caching en Gemini | Bajo | Medio | **P3 (Evolutiva)** |
@@ -138,4 +139,23 @@
   3. **Refactorización y Pulido Integral del Reporte (PDF y Web) — [RECORDATORIO CRÍTICO]:**
      * Acomodar y estandarizar la generación del informe ejecutivo tanto en `src/pdf_generator.py` como en `src/report_builder.py`.
      * Resolver desbordes de texto en celdas de tablas, asegurar saltos de página limpios en el PDF sin títulos huérfanos, formatear con elegancia los controles normativos APB y alinear la paleta de colores institucional para entrega C-Level formal de máxima prolijidad.
+
+---
+
+### 10. Desarrollo de Laboratorio en Cisco Packet Tracer y Validación Empírica End-to-End (MEJ-10)
+* **Estado:** 🎯 **Pendiente / Próximo Paso Prioritario** — Ver [RF-15](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md).
+* **Contexto:** Habiendo completado las capacidades formales (Batfish), semánticas (Gemini), de priorización What-If y reportes ejecutivos, es fundamental contrastar empíricamente todo lo que informa y recomienda la aplicación contra una topología simulada real en **Cisco Packet Tracer**.
+* **Alcance y Pasos de Validación:**
+  1. **Construcción del Laboratorio en Packet Tracer (`.pkt`):**
+     * Recriar la topología perimetral de tres zonas (**WAN / Internet**, **DMZ Servidores** y **LAN Usuarios**) con routers Cisco IOS y/o firewall Cisco ASA, PCs clientes y servidores (HTTPS/443, MySQL/3306, HTTP/80, RDP/3389, Telnet/23, SSH/22).
+     * Cargar la configuración vulnerable inicial (`running-config`) en el equipo de borde.
+  2. **Verificación Empírica Pre-Remediación (Estado Vulnerable):**
+     * Comprobar con tráfico real y *Simulation Mode* (PDU / ping / navegador web / cliente Telnet-SSH en Packet Tracer) que cada hallazgo reportado por la aplicación ocurre exactamente como lo predice el **Digital Twin de Batfish**:
+       * Que la regla de *Critical Shadowing* deja pasar tráfico hacia el servidor que debía estar bloqueado.
+       * Que los puertos expuestos desde WAN y líneas VTY responden tal como lo alerta la matriz de aislamiento y el simulador *"El Camino del Paquete"*.
+       * Que los contadores `show access-lists` reflejan `0 matches` / `hitcnt=0` en las reglas zombi y aumentan en las reglas activas.
+  3. **Aplicación de Scripts `.cli` Generados por la App y Validación Post-Remediación:**
+     * Copiar y pegar en la consola CLI de Packet Tracer los scripts de **Remediación (Plan A / Plan B / What-If)** generados por la aplicación para verificar que no existan errores de sintaxis en el IOS/ASA real.
+     * Re-ejecutar las pruebas de tráfico entre zonas para certificar que las brechas se cerraron sin cortar los servicios legítimos (validando empíricamente el *Blast Radius* y la *Matriz de Aislamiento*).
+     * Probar el script de **Rollback (`.cli`)** en la consola del dispositivo y confirmar que el equipo vuelve exactamente a su estado original sin residuos de configuración.
 

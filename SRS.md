@@ -182,6 +182,11 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 * **RF-14.3 (Normalización Transparente para Batfish):** Limpiar automáticamente las anotaciones `(hitcnt=N) 0x...`, `(N matches)` y `line N` antes de cargar el snapshot en Batfish (`CiscoTopologyExtractor.strip_hitcnt`), permitiendo auditar salidas de `show access-lists` con verificación formal sin falsos errores de sintaxis.
 * **RF-14.4 (Exposición en Pre-Flight, CLI, Dashboard y Reportes):** Mostrar el conteo y detalle de reglas zombi en la vista previa Pre-Flight (Web y CLI), en el endpoint `GET /api/session/{id}/zombies` (botón *🧟 Detectar reglas zombi (hitcnt=0)* en *Herramientas Batfish*), en el contexto enviado a Gemini y en la sección 3.1 del Reporte Ejecutivo (Web, PDF y Markdown).
 
+### RF-15 (Planificado - Validación Empírica): Laboratorio en Cisco Packet Tracer y Certificación End-to-End `[MEJ-10]`
+* **RF-15.1 (Maqueta Topológica en Packet Tracer):** Disponer de un laboratorio funcional en Cisco Packet Tracer (zonas WAN, DMZ y LAN con servidores y hosts de prueba) que replique las configuraciones auditadas por el sistema.
+* **RF-15.2 (Contraste Empírico de Diagnósticos y Simulador):** Verificar mediante generación de tráfico en Packet Tracer (PDUs, clientes TCP/UDP/ICMP y `show access-lists`) la exactitud del simulador *El Camino del Paquete*, la *Matriz de Aislamiento*, la *Reachability Simbólica* y la detección de *Shadowing* y *Reglas Zombi*.
+* **RF-15.3 (Validación de Scripts de Remediación y Rollback en CLI Real):** Aplicar en la terminal IOS/ASA de Packet Tracer los scripts `.cli` de remediación y rollback generados por la aplicación (incluyendo combinaciones del *Centro de Decisiones What-If*), certificando ausencia de errores sintácticos, cierre efectivo de brechas, preservación de flujos legítimos y reversibilidad total mediante rollback.
+
 ---
 
 ## 5. Requisitos No Funcionales
