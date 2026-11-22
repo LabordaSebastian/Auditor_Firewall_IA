@@ -132,7 +132,7 @@ Herramienta CLI profesional en Python que audita configuraciones de firewalls y 
 
 ### RF-07: Dashboard Web Interactivo y API REST (`src/web/` + `src.cli serve`) `[MEJ-05]`
 * **RF-07.1:** Exponer una API REST construida sobre **FastAPI** (`src/web/app.py`, `src/web/routes.py`) con endpoints para diagnóstico del sistema (`/api/status`), auditoría en vivo con subida de archivo `.cfg` (`/api/audit`), carga instantánea de demos de laboratorio (`/api/demo/{sample_id}`), sesiones en memoria (`/api/session/{id}`) y descarga de entregables (`.pdf`, `.md`, `.cli`).
-* **RF-07.2:** Proveer una interfaz gráfica moderna en Vanilla HTML5/CSS/JS (Dark Mode + Glassmorphism, Google Fonts `Outfit` y `JetBrains Mono`) servida estáticamente sin dependencias de Node.js o npm.
+* **RF-07.2:** Proveer una interfaz gráfica moderna en Vanilla HTML5/CSS/JS (Dark Mode + Glassmorphism, Google Fonts `Outfit` y `JetBrains Mono`) servida estáticamente sin dependencias de Node.js o npm, incluyendo tanto carga de archivos `.cfg` por drag-and-drop como una **Terminal de Pegado Rápido desde la CLI (`Ctrl+C` / `Ctrl+V`)** que normaliza automáticamente salidas crudas de `show access-lists`, bloques `ip access-list` o reglas sueltas.
 * **RF-07.3:** Proveer un switch interactivo de Sanitización Reversible Zero-Leak (RFC 5737 y secretos) habilitado por defecto (`Enabled = True`), con visualizador modal transparente de mapeo biunívoco y diff interactivo línea a línea (Original vs. Sanitizado).
 * **RF-07.4:** Integrar el comando de terminal `python -m src.cli serve [--host 127.0.0.1] [--port 8000] [--open-browser]` para iniciar el servidor uvicorn directamente desde la CLI de Typer.
 

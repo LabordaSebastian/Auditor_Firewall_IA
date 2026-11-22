@@ -11,9 +11,91 @@ class CiscoTopologyExtractor:
     """
 
     def __init__(self, config_text: str):
-        self.config_text = config_text
-        self.lines = [line.strip() for line in config_text.splitlines() if line.strip()]
-        self.parse = CiscoConfParse(config_text.splitlines(), syntax='ios')
+        self.config_text = self.normalize_cli_paste(config_text)
+        self.lines = [line.strip() for line in self.config_text.splitlines() if line.strip()]
+        self.parse = CiscoConfParse(self.config_text.splitlines(), syntax='ios')
+
+    @staticmethod
+    def normalize_cli_paste(raw_text: str) -> str:
+        """
+        Normaliza fragmentos pegados directamente desde la CLI (`Ctrl+C` / `Ctrl+V`) de un router
+        o firewall Cisco (`show access-lists`, `show ip access-list`, `show access-list`, bloques
+        `ip access-list` sueltos o ACEs sin cabecera) a sintaxis Cisco válida para Batfish y el extractor.
+        """
+        if not raw_text or not raw_text.strip():
+            return raw_text
+
+        prompt_host: Optional[str] = None
+        has_hostname = False
+        has_acl_header = False
+        bare_aces: List[str] = []
+        out_lines: List[str] = []
+
+        prompt_re = re.compile(r"^\s*([A-Za-z0-9_\-]+)(?:\([^\)]+\))?[#>]\s*(.*)$")
+        ios_show_acl_re = re.compile(r"^\s*(Extended|Standard)\s+IP\s+access\s+list\s+(\S+)\s*$", re.IGNORECASE)
+        asa_summary_re = re.compile(r"^\s*access-list\s+\S+;\s+\d+\s+elements\b", re.IGNORECASE)
+        noise_re = re.compile(
+            r"^\s*(?:Building configuration\.\.\.|Current configuration\s*:\s*\d+\s*bytes|--\s*More\s*--)\s*$",
+            re.IGNORECASE,
+        )
+
+        for raw_line in raw_text.splitlines():
+            line = raw_line.replace("\r", "")
+            stripped = line.strip()
+            if not stripped or noise_re.match(stripped) or asa_summary_re.match(stripped):
+                out_lines.append(line) if not stripped else None
+                continue
+
+            # Detectar prompt de consola (ej. R-BORDE#show access-lists o ASA(config)# access-list ...)
+            m_prompt = prompt_re.match(stripped)
+            if m_prompt:
+                candidate_host, remainder = m_prompt.group(1), m_prompt.group(2).strip()
+                if not prompt_host:
+                    prompt_host = candidate_host
+                if not remainder or re.match(r"^(?:show|sh|terminal|term|enable|en|conf|exit|end|wr)\b", remainder, re.IGNORECASE):
+                    continue
+                line = remainder
+                stripped = remainder
+
+            if re.match(r"^hostname\s+\S+", stripped, re.IGNORECASE):
+                has_hostname = True
+
+            # Cabecera de 'show access-lists' en Cisco IOS / Packet Tracer
+            m_show = ios_show_acl_re.match(stripped)
+            if m_show:
+                kind, acl_name = m_show.group(1).lower(), m_show.group(2)
+                out_lines.append(f"ip access-list {kind} {acl_name}")
+                has_acl_header = True
+                continue
+
+            if re.match(r"^(?:ip\s+access-list\s+(?:extended|standard)\s+\S+|access-list\s+\S+)", stripped, re.IGNORECASE):
+                has_acl_header = True
+
+            # Normalizar ', wildcard bits ' de salidas Standard IP access list en IOS
+            if ", wildcard bits " in line:
+                line = line.replace(", wildcard bits ", " ")
+                stripped = line.strip()
+
+            # Detectar si son ACEs sueltas pegadas sin cabecera 'ip access-list'
+            if not has_acl_header and re.match(r"^(?:\d+\s+)?(?:permit|deny|remark)\s+", stripped, re.IGNORECASE):
+                bare_aces.append(f" {stripped}")
+                continue
+
+            # Si estamos dentro de una ACL nombrada de IOS y la línea es una ACE sin indentar, indentarla
+            if has_acl_header and re.match(r"^(?:\d+\s+)?(?:permit|deny|remark)\s+", stripped, re.IGNORECASE):
+                line = f" {stripped}"
+
+            out_lines.append(line)
+
+        if bare_aces and not has_acl_header:
+            out_lines.append("ip access-list extended ACL_CLI_PEGADA")
+            out_lines.extend(bare_aces)
+
+        # Si el fragmento pegado solo trae ACLs sin hostname, inyectar el del prompt o uno por defecto
+        if not has_hostname and (has_acl_header or bare_aces):
+            out_lines.insert(0, f"hostname {prompt_host or 'FIREWALL-CLI-PASTE'}")
+
+        return "\n".join(out_lines) + ("\n" if raw_text.endswith("\n") else "")
 
     def detect_dialect(self) -> str:
         """Determina si la configuración corresponde a Cisco ASA o Cisco IOS/IOS-XE."""
@@ -140,6 +222,11 @@ class CiscoTopologyExtractor:
                 if m_vty:
                     active_acls.add(m_vty.group(1))
 
+        # Si el usuario pegó únicamente ACLs desde la CLI (sin bloques de interfaces),
+        # todas las ACLs pegadas se consideran activas bajo auditoría directa.
+        if not interfaces and declared_acls and not active_acls:
+            return sorted(list(declared_acls)), []
+
         orphan_acls = list(declared_acls - active_acls)
         return sorted(list(active_acls)), sorted(orphan_acls)
 
@@ -153,15 +240,51 @@ class CiscoTopologyExtractor:
     @classmethod
     def strip_hitcnt(cls, config_text: str) -> str:
         """
-        Limpia anotaciones de contadores (`(hitcnt=N) 0x...`, `(N matches)`) y `line N` de salidas
-        `show access-lists` para que el parser formal de Batfish procese las ACLs como running-config.
+        Limpia anotaciones de contadores (`(hitcnt=N) 0x...`, `(N matches)`), `line N` de salidas
+        `show access-lists` y adapta `object-group service <NAME> tcp|udp` de Cisco ASA a la
+        gramática canónica de Batfish (`service-object`) manteniendo correspondencia 1:1 de líneas.
         """
         cleaned_lines: List[str] = []
+        current_svc_proto: Optional[str] = None
+        typed_svc_groups: Set[str] = set()
+
         for raw_line in config_text.splitlines():
             line = raw_line
             for pat in cls._HITCNT_PATTERNS:
                 line = pat.sub("", line)
             line = re.sub(r"^(\s*access-list\s+\S+)\s+line\s+\d+\s+", r"\1 ", line, flags=re.IGNORECASE)
+
+            # Adaptación 1:1 de object-group service <GRP> tcp|udp (ASA) para compatibilidad formal con Batfish
+            m_svc_grp = re.match(
+                r"^(\s*object-group\s+service\s+(\S+))\s+(tcp|udp|tcp-udp)\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if m_svc_grp:
+                current_svc_proto = m_svc_grp.group(3).lower()
+                typed_svc_groups.add(m_svc_grp.group(2).upper())
+                line = m_svc_grp.group(1)
+            elif current_svc_proto:
+                m_port_obj = re.match(
+                    r"^(\s*)port-object\s+((?:eq\s+\S+)|(?:range\s+\S+\s+\S+))\s*$",
+                    line,
+                    flags=re.IGNORECASE,
+                )
+                if m_port_obj:
+                    line = f"{m_port_obj.group(1)}service-object {current_svc_proto} destination {m_port_obj.group(2)}"
+                elif not line.startswith((" ", "\t")):
+                    current_svc_proto = None
+
+            if typed_svc_groups:
+                m_ace_svc = re.match(
+                    r"^(\s*access-list\s+\S+\s+(?:extended\s+)?(?:permit|deny))\s+(?:tcp|udp)\s+(.+?)\s+object-group\s+(\S+)(\s+.*)?$",
+                    line,
+                    flags=re.IGNORECASE,
+                )
+                if m_ace_svc and m_ace_svc.group(3).upper() in typed_svc_groups:
+                    suffix = m_ace_svc.group(4) or ""
+                    line = f"{m_ace_svc.group(1)} object-group {m_ace_svc.group(3)} {m_ace_svc.group(2)}{suffix}"
+
             cleaned_lines.append(line.rstrip())
         return "\n".join(cleaned_lines) + ("\n" if config_text.endswith("\n") else "")
 

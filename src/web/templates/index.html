@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css?v=4.4">
+  <link rel="stylesheet" href="/static/css/styles.css?v=4.5">
 </head>
 <body>
 <div class="app">
@@ -32,11 +32,24 @@
     <section id="uploadSection" class="card" aria-labelledby="uploadTitle">
       <h2 id="uploadTitle">📥 Nueva auditoría</h2>
       <div id="pickerView">
-        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Soltar archivo de configuración">
-          <div class="big">📄</div>
-          <p><b>Arrastra tu archivo <code>.cfg</code> aquí</b> o haz clic para seleccionarlo</p>
-          <small>Cisco IOS / IOS-XE / ASA · máx. 2 MB · verás una vista previa antes de auditar</small>
-          <input type="file" id="fileInput" accept=".cfg,.txt,.conf" hidden>
+        <div class="upload-grid">
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Soltar archivo de configuración">
+            <div class="big">📄</div>
+            <p><b>Arrastra tu archivo <code>.cfg</code> aquí</b> o haz clic para seleccionarlo</p>
+            <small>Cisco IOS / IOS-XE / ASA · máx. 2 MB · o presiona <b>Ctrl + V</b> en cualquier parte</small>
+            <input type="file" id="fileInput" accept=".cfg,.txt,.conf" hidden>
+          </div>
+          <div class="paste-box">
+            <div class="paste-head">
+              <b>⌨️ Pegar directo desde la CLI (<code>Ctrl+C</code> / <code>Ctrl+V</code>)</b>
+              <small>Acepta <code>show access-lists</code>, <code>ip access-list</code>, <code>access-list</code> o <code>running-config</code></small>
+            </div>
+            <textarea id="cliPasteInput" rows="5" placeholder="Pegá aquí con Ctrl+V las Access-Lists o configuración copiadas de la terminal del firewall…"></textarea>
+            <div class="btn-row" style="margin-top:8px">
+              <button type="button" class="btn primary sm" id="btnPastePreview">🔎 Analizar texto pegado</button>
+              <button type="button" class="btn sm" id="btnPasteClear">🧹 Limpiar</button>
+            </div>
+          </div>
         </div>
         <div class="btn-row" style="margin-top:14px" id="demoButtons"></div>
       </div>
@@ -255,6 +268,6 @@
   </div>
 </div>
 
-<script src="/static/js/app.js?v=4.4"></script></script></script></script>
+<script src="/static/js/app.js?v=4.5"></script></script></script></script></script>
 </body>
 </html>

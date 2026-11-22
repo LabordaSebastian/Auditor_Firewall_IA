@@ -113,7 +113,7 @@ Lanza la plataforma web en modo oscuro con estética *Glassmorphism*, grafo topo
 python -m src.cli serve --host 127.0.0.1 --port 8000 --open-browser
 ```
 Accede desde tu navegador a `http://127.0.0.1:8000`. Los resultados se organizan en pestañas: **Postura & hallazgos**, **Decisiones What-If**, **Topología & simulación**, **Herramientas Batfish** y **Reporte ejecutivo** (visor nativo con índice navegable, sin necesidad de descargar el PDF):
-* **Carga de Configuraciones:** Arrastra archivos `.cfg` o carga demos de un clic para Cisco IOS y ASA.
+* **Carga de Configuraciones o Pegado Directo de CLI (`Ctrl+C` / `Ctrl+V`):** Arrastra archivos `.cfg`, carga demos de un clic o pega directamente en pantalla la salida de `show access-lists`, `ip access-list` o `running-config` desde la consola de tu router/firewall o Packet Tracer.
 * **Sanitización Transparente:** Switch Zero-Leak (activo por defecto) con visor de diferencias (Original vs. Sanitizado).
 * **Distribución Gráfica de Riesgo:** Gráficos vectoriales Donut SVG de Severidad y Taxonomía con filtrado interactivo.
 * **Grafo Topológico con Física Elástica:** Explora interfaces y zonas de seguridad arrastrando nodos con física reactiva a 60 FPS.

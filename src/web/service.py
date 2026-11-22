@@ -118,8 +118,9 @@ class AuditService:
         original vs. sanitizada, guía de vulnerabilidades (solo demos) y control de sintaxis con
         Batfish (initIssues). Si Batfish no está disponible, el preview sigue funcionando.
         """
-        sanitized, lookup_map = ConfigSanitizer().sanitize(raw_config, source_filename=filename)
-        extractor = CiscoTopologyExtractor(raw_config)
+        normalized = CiscoTopologyExtractor.normalize_cli_paste(raw_config)
+        sanitized, lookup_map = ConfigSanitizer().sanitize(normalized, source_filename=filename)
+        extractor = CiscoTopologyExtractor(normalized)
         dialect = extractor.detect_dialect()
         interfaces = extractor.extract_interfaces(dialect)
         active, orphan = extractor.extract_acls_and_orphans(interfaces, dialect)
@@ -172,11 +173,12 @@ class AuditService:
     def run_audit(self, raw_config: str, filename: str, sanitize: bool = True,
                   use_ai: bool = True, prefer_cache: bool = False) -> AuditSession:
         base_name = Path(filename).stem
+        normalized = CiscoTopologyExtractor.normalize_cli_paste(raw_config)
         sanitizer = ConfigSanitizer()
         if sanitize:
-            sanitized, lookup_map = sanitizer.sanitize(raw_config, source_filename=filename)
+            sanitized, lookup_map = sanitizer.sanitize(normalized, source_filename=filename)
         else:
-            sanitized, lookup_map = raw_config, {"metadata": {}, "ip_mappings": {}, "secret_mappings": {}}
+            sanitized, lookup_map = normalized, {"metadata": {}, "ip_mappings": {}, "secret_mappings": {}}
 
         topology = CiscoTopologyExtractor(sanitized).extract_topology()
 
@@ -326,6 +328,8 @@ class AuditService:
                 if z["zona"] == "WAN":
                     iface = s.topology.interfaces[z["interfaz"]]
                     wan_acls += [a for a in (iface.acl_in,) if a and a not in wan_acls]
+            if not wan_acls:
+                wan_acls = list(s.topology.acls_activas or s.topology.acls_huerfanas)
             with self._bf_lock:
                 rows = self._analyzer().scan_exposed_ports(s.sanitized_config, s.filename, wan_acls)
             s.cache["exposure"] = self._deep_desanitize(rows, s.lookup_map)

@@ -86,3 +86,41 @@ ip access-list extended ACL_WAN_IN
     data = r.json()
     assert data["total_con_hitcnt"] == 1 and len(data["reglas"]) == 1
     assert "200.45.112.18" in data["reglas"][0]["texto_crudo"]
+
+
+def test_normalize_cli_paste_supports_show_access_lists_and_bare_aces():
+    """Al copiar y pegar directo de la CLI (show access-lists o ACEs sueltas), se normaliza para Batfish y el extractor."""
+    pasted_ios = """R-LAB-PT#show access-lists
+Extended IP access list ACL_BORDE
+    10 permit tcp any 172.16.10.0 0.0.0.255 eq 443 (25 matches)
+    20 deny tcp any host 172.16.10.50 eq 443 (0 matches)
+Standard IP access list ACL_MGMT
+    10 permit 192.168.1.0, wildcard bits 0.0.0.255
+"""
+    topo = CiscoTopologyExtractor(pasted_ios).extract_topology()
+    assert topo.hostname == "R-LAB-PT"
+    assert set(topo.acls_activas) == {"ACL_BORDE", "ACL_MGMT"}
+    assert topo.acls_huerfanas == []
+    assert len(topo.reglas_zombi) == 1 and topo.reglas_zombi[0].secuencia == "20"
+
+    # ACEs sueltas sin cabecera 'ip access-list'
+    bare = "10 permit tcp any any eq 80\n20 deny ip any any log\n"
+    topo_bare = CiscoTopologyExtractor(bare).extract_topology()
+    assert topo_bare.hostname == "FIREWALL-CLI-PASTE"
+    assert "ACL_CLI_PEGADA" in topo_bare.acls_activas
+
+
+def test_strip_hitcnt_adapts_asa_typed_service_object_group_for_batfish():
+    """Adapta object-group service <GRP> tcp + port-object eq ... a service-object 1:1 para Batfish."""
+    asa_snippet = (
+        "object-group service GRP_WEB_PORTS tcp\n"
+        " port-object eq www\n"
+        " port-object eq https\n"
+        "!\n"
+        "access-list ACL_OUTSIDE_IN extended permit tcp any object OBJ_SRV_WEB object-group GRP_WEB_PORTS\n"
+    )
+    adapted = CiscoTopologyExtractor.strip_hitcnt(asa_snippet)
+    assert len(adapted.splitlines()) == len(asa_snippet.splitlines())
+    assert "object-group service GRP_WEB_PORTS\n" in adapted
+    assert "service-object tcp destination eq www" in adapted
+    assert "access-list ACL_OUTSIDE_IN extended permit object-group GRP_WEB_PORTS any object OBJ_SRV_WEB" in adapted

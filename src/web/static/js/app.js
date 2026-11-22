@@ -259,14 +259,38 @@ function cancelPreview() {
   showPicker(true);
 }
 
+function previewPastedText(rawText) {
+  const txt = (rawText || '').trim();
+  if (!txt) { toast('Pegá primero las Access-Lists o configuración de la CLI.'); return; }
+  const syntheticFile = new File([txt + '\n'], 'cli-paste.cfg', { type: 'text/plain' });
+  previewFile(syntheticFile);
+}
+
 function setupUpload() {
-  const dz = $('dropzone'), fi = $('fileInput');
+  const dz = $('dropzone'), fi = $('fileInput'), pi = $('cliPasteInput');
   dz.addEventListener('click', () => fi.click());
   dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
   fi.addEventListener('change', () => previewFile(fi.files[0]));
   ['dragenter', 'dragover'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('drag'); }));
   ['dragleave', 'drop'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('drag'); }));
   dz.addEventListener('drop', (e) => previewFile(e.dataTransfer.files[0]));
+  $('btnPastePreview').addEventListener('click', () => previewPastedText(pi.value));
+  $('btnPasteClear').addEventListener('click', () => { pi.value = ''; pi.focus(); });
+  pi.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); previewPastedText(pi.value); }
+  });
+  // Atajo global Ctrl+V: si el usuario pega directo sobre la pantalla de carga sin enfocar un input, analiza el portapapeles
+  document.addEventListener('paste', (e) => {
+    if ($('pickerView').hidden) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const clip = (e.clipboardData || window.clipboardData).getData('text');
+    if (clip && clip.trim()) {
+      e.preventDefault();
+      pi.value = clip;
+      previewPastedText(clip);
+    }
+  });
   $('optSanitize').addEventListener('change', updateSanBadge);
   updateSanBadge();
   api('/api/demos').then((demos) => {

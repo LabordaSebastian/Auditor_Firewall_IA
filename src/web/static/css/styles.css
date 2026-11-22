@@ -93,6 +93,23 @@ body {
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ----- Upload ----- */
+.upload-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 16px; align-items: stretch; }
+@media (max-width: 960px) { .upload-grid { grid-template-columns: 1fr; } }
+.paste-box {
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 16px 18px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: hsla(222, 47%, 7%, 0.65);
+}
+.paste-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.paste-head b { font-size: 0.92rem; }
+.paste-head small { color: var(--muted); font-size: 0.76rem; }
+#cliPasteInput {
+  width: 100%; flex: 1; min-height: 110px; resize: vertical;
+  font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--text);
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: hsla(222, 47%, 5%, 0.9); outline: none;
+}
+#cliPasteInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px hsla(199, 89%, 52%, 0.2); }
 .upload-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
 @media (max-width: 960px) { .upload-grid { grid-template-columns: 1fr; } }
 .dropzone {
