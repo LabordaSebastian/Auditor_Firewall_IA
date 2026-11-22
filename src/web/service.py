@@ -122,6 +122,7 @@ class AuditService:
         dialect = extractor.detect_dialect()
         interfaces = extractor.extract_interfaces(dialect)
         active, orphan = extractor.extract_acls_and_orphans(interfaces, dialect)
+        zombies, total_hits = extractor.extract_zombie_rules(dialect)
         vty_ac, vty_ti = extractor.extract_vty_security()
 
         syntax: Dict[str, Any] = {"disponible": True, "problemas": [], "error": None}
@@ -150,6 +151,8 @@ class AuditService:
             ],
             "acls_activas": active,
             "acls_huerfanas": orphan,
+            "reglas_zombi": [z.model_dump() for z in zombies],
+            "total_reglas_con_hitcnt": total_hits,
             "vty": {"access_class": vty_ac, "transport_input": vty_ti},
             "sanitizacion": {
                 "activa": sanitize,
@@ -247,6 +250,7 @@ class AuditService:
             "hallazgos": [h.model_dump(mode="json") for h in rep.hallazgos] if rep else [],
             "distribucion": {"severidad": dict(sev), "categoria": dict(cat)},
             "matematicos": self.shadowing(s),
+            "zombis": self.zombies(s),
             "grafo": s.graph,
             "topologia": self._deep_desanitize(s.topology.model_dump(mode="json"), s.lookup_map),
             "acls": self.acl_names(s),
@@ -256,6 +260,11 @@ class AuditService:
 
     def shadowing(self, s: AuditSession) -> List[Dict[str, Any]]:
         data = [m.model_dump() for m in s.math_findings]
+        return self._deep_desanitize(data, s.lookup_map)
+
+    def zombies(self, s: AuditSession) -> List[Dict[str, Any]]:
+        """Reglas zombi con hitcnt=0 / (0 matches) detectadas en la configuración (MEJ-02)."""
+        data = [z.model_dump() for z in s.topology.reglas_zombi]
         return self._deep_desanitize(data, s.lookup_map)
 
     def sanitization_view(self, s: AuditSession) -> Dict[str, Any]:

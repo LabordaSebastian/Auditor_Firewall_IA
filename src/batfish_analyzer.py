@@ -7,6 +7,7 @@ from pybatfish.client.session import Session
 from pybatfish.exception import BatfishException
 from src.config import BATFISH_HOST, BATFISH_PORT
 from src.models import HallazgoMatematico
+from src.topology_extractor import CiscoTopologyExtractor
 
 
 class BatfishUnavailableError(Exception):
@@ -51,7 +52,7 @@ class BatfishAnalyzer:
             configs_dir = temp_dir / "configs"
             configs_dir.mkdir(parents=True, exist_ok=True)
             cfg_file = configs_dir / config_filename
-            cfg_file.write_text(sanitized_config_text, encoding="utf-8")
+            cfg_file.write_text(CiscoTopologyExtractor.strip_hitcnt(sanitized_config_text), encoding="utf-8")
 
             # Inicializar red y snapshot en Batfish
             self.session.set_network(network_name)
@@ -133,7 +134,7 @@ class BatfishAnalyzer:
         try:
             configs_dir = temp_dir / "configs"
             configs_dir.mkdir(parents=True, exist_ok=True)
-            (configs_dir / filename).write_text(config_text, encoding="utf-8")
+            (configs_dir / filename).write_text(CiscoTopologyExtractor.strip_hitcnt(config_text), encoding="utf-8")
             self.session.set_network(network_name)
             self.session.init_snapshot(str(temp_dir), name=snap_name, overwrite=True)
         finally:

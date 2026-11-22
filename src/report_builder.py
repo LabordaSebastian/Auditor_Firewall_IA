@@ -92,6 +92,7 @@ class ReportBuilder:
             f"* **Total de Líneas de Configuración:** {topo.total_lineas_config}",
             f"* **ACLs Activas en Interfaces/VTY:** {', '.join(f'`{a}`' for a in topo.acls_activas) if topo.acls_activas else 'Ninguna'}",
             f"* **ACLs Huérfanas (Sin Uso Activo):** {', '.join(f'`{a}`' for a in topo.acls_huerfanas) if topo.acls_huerfanas else 'Ninguna'}",
+            f"* **Reglas Zombi Inactivas (`hitcnt=0` / `0 matches`):** {len(topo.reglas_zombi)} detectada(s)",
             f"* **Protección VTY (Line 0-15):** Transport: `{topo.vty_transport_input or 'Inseguro/No configurado'}` | Access-Class: `{topo.vty_access_class or 'Ninguna'}`",
             "",
             "### Interfaces Auditadas:",

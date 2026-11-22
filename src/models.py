@@ -87,6 +87,8 @@ class ReporteAuditoriaFirewall(BaseModel):
 
 # Modelos para datos internos de topología y análisis matemático
 class ReglaACL(BaseModel):
+    acl_nombre: str = ""
+    secuencia: Optional[str] = None
     numero_linea: int
     texto_crudo: str
     accion: str  # permit / deny / remark
@@ -96,6 +98,7 @@ class ReglaACL(BaseModel):
     puertos: Optional[str] = None
     comentario: Optional[str] = None
     hit_count: Optional[int] = None
+    riesgo_depuracion: str = "NULO / BAJO"
 
 
 class ContextoInterfaz(BaseModel):
@@ -114,6 +117,8 @@ class ContextoTopologia(BaseModel):
     interfaces: Dict[str, ContextoInterfaz] = Field(default_factory=dict)
     acls_activas: List[str] = Field(default_factory=list)
     acls_huerfanas: List[str] = Field(default_factory=list)
+    reglas_zombi: List[ReglaACL] = Field(default_factory=list)
+    total_reglas_con_hitcnt: int = 0
     vty_access_class: Optional[str] = None
     vty_transport_input: Optional[str] = None
     total_lineas_config: int = 0

@@ -95,7 +95,8 @@ def _print_preview(data: dict) -> None:
             f"[bold]{data['hostname']}[/bold] · {data['dialecto']}\n"
             f"[dim]{data['archivo']} · {data['tamano_humano']} · {data['total_lineas']} líneas[/dim]\n"
             f"Interfaces: [cyan]{len(data['interfaces'])}[/cyan] · ACLs aplicadas: [cyan]{len(data['acls_activas'])}[/cyan] · "
-            f"ACLs huérfanas: [yellow]{len(data['acls_huerfanas'])}[/yellow]\n"
+            f"ACLs huérfanas: [yellow]{len(data['acls_huerfanas'])}[/yellow] · "
+            f"Reglas zombi (hitcnt=0): [yellow]{len(data.get('reglas_zombi', []))}[/yellow]\n"
             f"A enmascarar: [yellow]{data['sanitizacion']['ips']}[/yellow] IPs públicas · "
             f"[yellow]{data['sanitizacion']['secretos']}[/yellow] secretos",
             title="🔎 Vista previa (no se ejecutó la auditoría)",
@@ -204,7 +205,7 @@ def audit(
                 f"[green]Etapa 2: Topología analizada.[/green] "
                 f"Dispositivo: [bold]{topology.hostname}[/bold] ({topology.dialecto}). "
                 f"{len(topology.interfaces)} interfaces, {len(topology.acls_activas)} ACLs activas, "
-                f"{len(topology.acls_huerfanas)} ACLs huérfanas."
+                f"{len(topology.acls_huerfanas)} ACLs huérfanas, {len(topology.reglas_zombi)} reglas zombi (hitcnt=0)."
             ),
         )
 

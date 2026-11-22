@@ -61,7 +61,7 @@ def test_ids_are_unique(dom):
     ("donutSev", "postura"), ("findings", "postura"), ("filters", "postura"),
     ("wiTable", "whatif"), ("wiRun", "whatif"), ("wiReset", "whatif"),
     ("topoCanvas", "topologia"), ("simResult", "topologia"), ("btnSim", "topologia"),
-    ("btnShadow", "herramientas"), ("btnMatrix", "herramientas"), ("btnReach", "herramientas"), ("btnTf", "herramientas"),
+    ("btnShadow", "herramientas"), ("btnZombies", "herramientas"), ("btnMatrix", "herramientas"), ("btnReach", "herramientas"), ("btnTf", "herramientas"),
     ("reportView", "reporte"),
 ])
 def test_each_tool_lives_in_the_expected_panel(dom, element, panel):

@@ -163,6 +163,13 @@ def shadowing(session_id: str):
     return {"reglas": service.shadowing(_session(session_id))}
 
 
+@router.get("/session/{session_id}/zombies")
+def zombies(session_id: str):
+    """Reglas inactivas/zombi con contador hitcnt=0 o (0 matches) (MEJ-02)."""
+    s = _session(session_id)
+    return {"reglas": service.zombies(s), "total_con_hitcnt": s.topology.total_reglas_con_hitcnt}
+
+
 @router.get("/session/{session_id}/exposure")
 def exposure(session_id: str):
     s = _session(session_id)

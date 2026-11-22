@@ -550,6 +550,13 @@ def build_pdf(report: ReporteAuditoriaFirewall, topology: ContextoTopologia) -> 
     pdf.h2("3.1 Superficie de Control y Plano de Gestion")
     pdf.para(f"ACLs activas en interfaces/VTY: {', '.join(topology.acls_activas) or 'Ninguna'}", size=8.8)
     pdf.para(f"ACLs huerfanas (sin aplicar): {', '.join(topology.acls_huerfanas) or 'Ninguna'}", size=8.8)
+    z_summary = (
+        f"{len(topology.reglas_zombi)} detectada(s) ("
+        + ", ".join(f"{z.acl_nombre} L{z.numero_linea}" for z in topology.reglas_zombi)
+        + ")"
+        if topology.reglas_zombi else "Ninguna"
+    )
+    pdf.para(f"Reglas zombi inactivas (hitcnt=0 / 0 matches): {z_summary}", size=8.8)
     pdf.para(
         f"Seguridad VTY (line vty 0 15): Transport input = {topology.vty_transport_input or 'No restringido'}  |  "
         f"Access-class = {topology.vty_access_class or 'Sin filtro ACL'}",

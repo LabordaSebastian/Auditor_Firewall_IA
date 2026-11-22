@@ -14,7 +14,7 @@
 | **Fase 3** | **Priorización Top-Down, Centro de Decisiones What-If y Botón de Reset** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-12 / ADR-007) |
 | **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Refactorización de Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
 | **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | ✅ **Completada e Implementada** (RF-13 / ADR-008) |
-| **MEJ-02** | Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi) | Bajo | Alto | **P2 (Alta)** |
+| **MEJ-02** | **Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi)** | Bajo | Alto | ✅ **Completada e Implementada** (RF-14) |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P3 (Evolutiva)** |
 | **MEJ-08** | Optimización de Inferencia y Context Caching en Gemini | Bajo | Medio | **P3 (Evolutiva)** |
@@ -33,7 +33,8 @@
 
 ---
 
-### 2. Detección de Reglas Zombi mediante Análisis de `hitcnt`
+### 2. Detección de Reglas Zombi mediante Análisis de `hitcnt` (MEJ-02) `[IMPLEMENTADO]`
+* **Estado:** ✅ **Completada e Implementada (2026-11-22)** — Ver [RF-14](file:///home/ing-laborda/Auditor_Firewall_IA/SRS.md).
 * **Contexto:** Muchas auditorías se realizan sobre la salida de `show access-lists`, la cual incluye contadores de coincidencias (`hitcnt=X` o `(0 matches)`).
 * **Mejora:**
   1. Extender [topology_extractor.py](file:///home/ing-laborda/Auditor_Firewall_IA/src/topology_extractor.py) para parsear contadores de hits por secuencia/línea.

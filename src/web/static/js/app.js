@@ -196,6 +196,7 @@ function renderPreview(p) {
       <div class="tile"><b>${p.interfaces.length}</b><span>Interfaces detectadas</span></div>
       <div class="tile"><b>${p.acls_activas.length}</b><span>ACLs aplicadas</span></div>
       <div class="tile ${p.acls_huerfanas.length ? 'warn' : 'ok'}"><b>${p.acls_huerfanas.length}</b><span>ACLs huérfanas</span></div>
+      <div class="tile ${(p.reglas_zombi || []).length ? 'warn' : 'ok'}"><b>${(p.reglas_zombi || []).length}</b><span>Reglas zombi (hitcnt=0)</span></div>
       <div class="tile ${p.sanitizacion.ips ? 'warn' : 'ok'}"><b>${p.sanitizacion.ips}</b><span>IPs públicas a enmascarar</span></div>
       <div class="tile ${p.sanitizacion.secretos ? 'warn' : 'ok'}"><b>${p.sanitizacion.secretos}</b><span>Secretos a proteger</span></div>
     </div>
@@ -512,6 +513,19 @@ async function showSanitization() {
 const showShadowing = () => batfishModal('Reglas pisadas y redundantes (filterLineReachability)', async () => {
   const d = await api(`/api/session/${S.id}/shadowing`);
   return d.reglas.length ? mathTable(d.reglas) : '<div class="empty">✅ Batfish no encontró reglas inalcanzables ni redundantes.</div>';
+});
+
+const showZombies = () => batfishModal('Reglas zombi / inactivas con contador hitcnt=0 (MEJ-02)', async () => {
+  const d = await api(`/api/session/${S.id}/zombies`);
+  if (!d.reglas.length) {
+    return `<div class="empty">✅ No se detectaron reglas con contador en cero (<code>hitcnt=0</code> o <code>(0 matches)</code>)${d.total_con_hitcnt ? ` entre las ${d.total_con_hitcnt} reglas con contadores.` : '. Para auditar tráfico histórico, incluye la salida de show access-lists.'}</div>`;
+  }
+  return `<div class="alert warn">🧟 <b>${d.reglas.length}</b> regla(s) inactiva(s) con <code>hitcnt=0</code> detectada(s). Candidatas a depuración con riesgo operativo <b>NULO / BAJO</b> para liberar memoria TCAM.</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>ACL</th><th>Línea / Sec.</th><th>Acción</th><th>Regla inactiva (0 hits)</th><th>Comentario / Ticket</th><th>Riesgo de depuración</th></tr></thead><tbody>${d.reglas.map((z) => `
+      <tr><td><b>${esc(z.acl_nombre)}</b></td><td style="font-family:var(--mono)">L${z.numero_linea}${z.secuencia ? ` (seq ${esc(z.secuencia)})` : ''}</td>
+      <td class="${/permit/i.test(z.accion) ? 'permit' : 'deny'}">${esc(z.accion.toUpperCase())}</td>
+      <td style="font-family:var(--mono);font-size:.77rem">${esc(z.texto_crudo)}</td>
+      <td>${esc(z.comentario || '—')}</td><td>${esc(z.riesgo_depuracion)}</td></tr>`).join('')}</tbody></table></div>`;
 });
 
 const showExposure = () => batfishModal('Puertos críticos expuestos desde WAN (searchFilters)', async () => {
@@ -1256,6 +1270,7 @@ function renderReport() {
           <h4 class="rep-h2">3.1 Superficie de Control y Plano de Gestión</h4>
           <p style="font-size:.88rem;margin-bottom:6px"><b>ACLs activas en interfaces/VTY:</b> ${esc((topo.acls_activas || []).join(', ') || 'Ninguna')}</p>
           <p style="font-size:.88rem;margin-bottom:6px"><b>ACLs huérfanas (sin aplicar):</b> ${esc((topo.acls_huerfanas || []).join(', ') || 'Ninguna')}</p>
+          <p style="font-size:.88rem;margin-bottom:6px"><b>Reglas zombi (hitcnt=0 / 0 matches):</b> ${(topo.reglas_zombi || []).length ? `${topo.reglas_zombi.length} detectada(s) (${topo.reglas_zombi.map((z) => `${esc(z.acl_nombre)} L${z.numero_linea}`).join(', ')})` : 'Ninguna'}</p>
           <p style="font-size:.88rem;margin-bottom:14px"><b>Seguridad VTY (line vty 0 15):</b> Transport input = <code>${esc(topo.vty_transport_input || 'No restringido')}</code> | Access-class = <code>${esc(topo.vty_access_class || 'Sin filtro ACL')}</code></p>
           <h4 class="rep-h2">3.2 Inventario de Interfaces y Perímetros L3</h4>
           <div style="overflow-x:auto">
@@ -1321,6 +1336,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
   $('btnSanView').addEventListener('click', showSanitization);
   $('btnShadow').addEventListener('click', showShadowing);
+  $('btnZombies').addEventListener('click', showZombies);
   $('btnExposure').addEventListener('click', showExposure);
   $('btnDiffA').addEventListener('click', () => showDiff('A'));
   $('btnDiffB').addEventListener('click', () => showDiff('B'));

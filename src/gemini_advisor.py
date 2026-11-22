@@ -70,6 +70,7 @@ class GeminiFirewallAdvisor:
             f"```cisco\n{sanitized_config}\n```\n\n"
             "INSTRUCCIONES CRÍTICAS:\n"
             "- Debes incluir TODOS los hallazgos matemáticos confirmados por Batfish/verificador.\n"
+            "- Si 'reglas_zombi' en la topología contiene reglas con hit_count=0 (hitcnt=0 / 0 matches), repórtalas como reglas zombi/inactivas candidatas a depuración con impacto operativo NULO o BAJO para optimizar memoria TCAM.\n"
             "- Identifica además vulnerabilidades normativas (puertos inseguros expuestos en WAN, falta de deny ip any any log, permisividad excesiva, VTY inseguras, etc.).\n"
             "- Para cada hallazgo, proporciona un Plan A (Hardening Estricto) y un Plan B (Transición con Logging de prueba).\n"
             "- En 'desglose_visual', desglosa con total precisión la(s) regla(s): si es una colisión/shadowing/redundancia genera 2 filas comparativas ('Regla Superior (Bloqueadora)' vs 'Regla Inferior (Oculta/Tapada)') con rol, secuencia, acción (PERMIT/DENY), protocolo, origen, destino, puerto y estado del flujo. Si es una regla individual (exposición WAN, permisividad, regla temporal), genera 1 fila ('Regla Única').\n"
