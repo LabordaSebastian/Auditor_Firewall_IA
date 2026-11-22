@@ -15,6 +15,7 @@
 | **Fase 4** | **Blast Radius Diferencial (`differentialReachability`), Feedback a la IA y Refactorización de Reportes** | Medio | Muy Alto | **Siguiente (Fase 4)** |
 | **MEJ-09** | **UX Modular por Pestañas (Tabs) y Visor Web Nativo del Reporte Ejecutivo (con Refactor Estético)** | Medio | Alto | ✅ **Completada e Implementada** (RF-13 / ADR-008) |
 | **MEJ-02** | **Análisis de Contadores de Tráfico (`hitcnt=0` / Reglas Zombi)** | Bajo | Alto | ✅ **Completada e Implementada** (RF-14) |
+| **MEJ-11** | **Criterio Arquitectónico de Zonas (Uso Contextual de `Any`), Consultor Plan C y Motor Determinístico** | Medio | Muy Alto | ✅ **Completada e Implementada** (RF-16) |
 | **MEJ-10** | **Desarrollo de Laboratorio en Cisco Packet Tracer y Validación Empírica End-to-End** | Medio | Muy Alto | **Siguiente / Prioridad Actual (P1)** |
 | **MEJ-03** | Auditoría en Vivo vía SSH (Integración Netmiko / Scrapli) | Medio | Muy Alto | **P2 (Alta)** |
 | **MEJ-07** | Soporte Multi-Vendor (Fortinet FortiOS, Palo Alto PAN-OS, Juniper) | Alto | Muy Alto | **P3 (Evolutiva)** |

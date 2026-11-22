@@ -84,6 +84,7 @@ async function runAudit(promiseFactory) {
     S = await promiseFactory();
     stages.querySelectorAll('.stage').forEach((s) => s.classList.add('done'));
     Object.keys(planSel).forEach((k) => delete planSel[k]);
+    Object.keys(customPlanC).forEach((k) => delete customPlanC[k]);
     filter = null;
     render();
   } catch (e) {
@@ -396,6 +397,53 @@ function collisionRows(h) {
       <td>${esc(r.protocolo)}</td><td>${esc(r.origen)}</td><td>${esc(r.destino)}</td><td>${esc(r.puerto)}</td><td>${esc(r.estado_flujo)}</td></tr>`).join('');
 }
 
+const customPlanC = {};     // id hallazgo -> DictamenExcepcionIA
+
+const ANY_VERDICT_BADGE = {
+  FLEXIBILIDAD_JUSTIFICADA: { cls: 'ok', text: "🟢 Flexibilidad 'Any' Justificada por Rol de Zona" },
+  EQUILIBRIO_PRAGMATICO: { cls: 'warn', text: "⚖️ Equilibrio Pragmático (Zona Segura ➔ Menos Segura)" },
+  RIESGO_INJUSTIFICADO: { cls: 'bad', text: "🔴 Uso de 'Any' Injustificado en este Sentido" },
+  HIGIENE_Y_CONTROL: { cls: 'info', text: '🧹 Higiene de Política / Control de Trazabilidad' },
+};
+
+function archBoxHtml(h) {
+  if (!h.criterio_arquitectonico_ia && (!h.sentido_flujo_zonas || h.sentido_flujo_zonas === 'N/D')) return '';
+  const vb = ANY_VERDICT_BADGE[h.veredicto_flexibilidad_any] || { cls: 'info', text: '🧭 Criterio de Zonas' };
+  return `<div class="arch-box">
+    <div class="arch-head">
+      <span class="arch-dir">🧭 <b>Sentido de Zonas:</b> ${esc(h.sentido_flujo_zonas || 'General')}</span>
+      <span class="arch-pill ${vb.cls}">${esc(vb.text)}</span>
+    </div>
+    <p class="arch-body">🧠 <b>Criterio Arquitectónico (Uso de <code>any</code> y Nivel de Confianza):</b> ${esc(h.criterio_arquitectonico_ia)}</p>
+  </div>`;
+}
+
+function exceptionPanelHtml(h) {
+  const id = h.id_hallazgo;
+  const res = customPlanC[id];
+  const resHtml = res ? `<div class="exc-result">
+    <div class="arch-head" style="margin-bottom:8px">
+      <b>Dictamen del Arquitecto (${res.fuente === 'gemini' ? '🧠 Gemini IA' : '⚙️ Motor Arquitectónico'}):</b>
+      <span class="arch-pill ${res.veredicto_arquitecto === 'EXCEPCION_VALIDA' ? 'ok' : 'warn'}">${esc(res.veredicto_arquitecto)}</span>
+    </div>
+    <p style="font-size:.87rem;margin-bottom:10px">${esc(res.opinion_experta)}</p>
+    <p class="block-label" style="margin-top:6px">Controles compensatorios recomendados</p>
+    <ul class="ctrl-list">${(res.controles_compensatorios || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
+    <p><b>${esc(res.plan_c_adaptado.nombre_plan)}</b> — ${esc(res.plan_c_adaptado.descripcion_accion)}</p>
+    <p style="color:var(--muted);margin:4px 0 8px">Efecto en red: ${esc(res.plan_c_adaptado.efecto_en_red)}</p>
+    ${codeBox(res.plan_c_adaptado.comandos_cli_implementacion, true, 'Plan C · Comandos CLI Adaptados a tu Excepción')}
+    <p class="block-label">Rollback inmediato</p>${codeBox(res.plan_c_adaptado.comandos_cli_rollback, false, 'Rollback Plan C')}
+  </div>` : '';
+  return `<div class="exc-box" data-exc-box="${esc(id)}">
+    <p class="meta" style="margin-bottom:8px">Escribe tu necesidad o excepción operativa (p. ej., por qué necesitas mantener <code>any</code> o conservar cierto acceso en esta regla) para obtener una opinión contextual y un <b>Plan C</b> con controles compensatorios:</p>
+    <div class="btn-row" style="gap:10px">
+      <input type="text" class="exc-input" data-exc-in="${esc(id)}" placeholder="Escribe aquí tu justificación o contexto operativo…" value="${esc(res ? res.justificacion_usuario : '')}" style="flex:1">
+      <button type="button" class="btn primary exc-run" data-exc-run="${esc(id)}">🧠 Evaluar excepción y generar Plan C</button>
+    </div>
+    <div data-exc-out="${esc(id)}">${resHtml}</div>
+  </div>`;
+}
+
 function findingCard(h) {
   const sel = planSel[h.id_hallazgo] || 'A';
   const plan = sel === 'A' ? h.plan_a_recomendado : h.plan_b_conservador;
@@ -408,6 +456,7 @@ function findingCard(h) {
       <p class="block-label">Regla afectada</p>${codeBox([h.linea_o_regla_afectada], false, 'Regla / Directiva detectada')}
       ${rows ? `<p class="block-label">Comparativa y colisión de reglas</p><div style="overflow-x:auto"><table><thead><tr><th>Rol</th><th>Línea</th><th>Acción</th><th>Proto</th><th>Origen</th><th>Destino</th><th>Puerto</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
       ${h.punto_critico_error ? `<div class="critical-point">⚠️ <b>Punto crítico del error:</b> ${esc(h.punto_critico_error)}</div>` : ''}
+      ${archBoxHtml(h)}
       <p class="block-label">Controles normativos incumplidos</p>
       <ul class="ctrl-list">${h.controles_normativos.map((c) => `<li>${esc(c)}</li>`).join('') || '<li>Sin controles asignados</li>'}</ul>
       <p class="block-label">Diagnóstico técnico</p><p>${esc(h.diagnostico_tecnico)}</p>
@@ -416,11 +465,13 @@ function findingCard(h) {
       <p class="block-label">Decisión</p>
       <div class="tabs" role="tablist">
         <button class="tab ${sel === 'A' ? 'on' : ''}" data-plan="A" role="tab">Plan A · Hardening</button>
-        <button class="tab ${sel === 'B' ? 'on' : ''}" data-plan="B" role="tab">Plan B · Transición</button></div>
+        <button class="tab ${sel === 'B' ? 'on' : ''}" data-plan="B" role="tab">Plan B · Transición</button>
+        <button class="tab ${sel === 'C' ? 'on' : ''}" data-plan="C" role="tab">🧠 Consultar excepción / Plan C (IA)</button></div>
+      ${sel === 'C' ? exceptionPanelHtml(h) : `
       <p><b>${esc(plan.nombre_plan)}</b> — ${esc(plan.descripcion_accion)}</p>
       <p style="color:var(--muted);margin:4px 0 8px">Efecto en red: ${esc(plan.efecto_en_red)}</p>
       ${codeBox(plan.comandos_cli_implementacion)}
-      <p class="block-label">Rollback inmediato</p>${codeBox(plan.comandos_cli_rollback, false)}
+      <p class="block-label">Rollback inmediato</p>${codeBox(plan.comandos_cli_rollback, false)}`}
     </div></article>`;
 }
 
@@ -428,7 +479,8 @@ function renderFindings() {
   // aviso de origen del reporte
   let notice = '';
   if (S.fuente_reporte === 'none') notice = `<div class="alert warn">⚠️ Sin reporte de IA${S.error_ia ? ': ' + esc(S.error_ia) : ' (análisis con Gemini desactivado)'}. Se muestran solo las anomalías formales de Batfish.</div>`;
-  else if (S.fuente_reporte === 'cache') notice = `<div class="alert warn">ℹ️ Reporte de IA cargado desde la caché local <code>reports/</code> (demo)${S.error_ia ? ' · fallo de Gemini: ' + esc(S.error_ia) : ''}.</div>`;
+  else if (S.fuente_reporte === 'deterministico') notice = `<div class="alert ok">⚙️ Reporte sintetizado por el <b>Motor Determinístico Local + Batfish</b> (criterio de zonas activo, sin dependencia de la nube)${S.error_ia ? ' · ' + esc(S.error_ia) : ''}.</div>`;
+  else if (S.fuente_reporte === 'cache') notice = `<div class="alert warn">ℹ️ Reporte cargado desde la caché local <code>reports/</code> con criterio contextual de zonas${S.error_ia ? ' · fallo de Gemini: ' + esc(S.error_ia) : ''}.</div>`;
   $('aiNotice').innerHTML = notice;
 
   if (!S.hallazgos.length) {
@@ -450,7 +502,23 @@ function renderFindings() {
     card.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => { planSel[id] = t.dataset.plan; planSel['_open_' + id] = true; renderFindings(); }));
   });
   $('findings').querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(cmdStore[+b.dataset.copy]); b.textContent = '¡Copiado!'; setTimeout(() => (b.textContent = 'Copiar'), 1400);
+    await navigator.clipboard.writeText(cmdStore[+b.dataset.copy]); b.textContent = '¡Copiado!'; setTimeout(() => (b.textContent = '📋 Copiar'), 1400);
+  }));
+  $('findings').querySelectorAll('.exc-run').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.dataset.excRun;
+    const inp = $('findings').querySelector(`[data-exc-in="${id}"]`);
+    const out = $('findings').querySelector(`[data-exc-out="${id}"]`);
+    const just = (inp ? inp.value : '').trim();
+    if (just.length < 3) { toast('Escribe una breve justificación operativa.'); return; }
+    b.disabled = true;
+    out.innerHTML = '<div class="empty"><span class="spinner"></span><p style="margin-top:8px">Evaluando sentido de zonas y diseñando Plan C con controles compensatorios…</p></div>';
+    try {
+      customPlanC[id] = await post(`/api/session/${S.id}/advisor/exception`, { id_hallazgo: id, justificacion: just });
+      renderFindings();
+    } catch (e) {
+      out.innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
+      b.disabled = false;
+    }
   }));
 }
 
@@ -953,6 +1021,7 @@ function wiPreset(kind) {
 
 function wiReset() {
   Object.keys(planSel).forEach((k) => delete planSel[k]);
+  Object.keys(customPlanC).forEach((k) => delete customPlanC[k]);
   filter = null;
   WI.dec = wiDefaults(); $('wiOut').innerHTML = '';
   $('wiIso').checked = true;
@@ -1115,6 +1184,7 @@ function repFinding(h) {
       <div class="rep-evidence">${esc(h.linea_o_regla_afectada)}</div>
       ${rows ? `<p class="block-label">${esc(colTitle)}</p><div style="overflow-x:auto"><table class="rep-table"><thead><tr><th>Rol</th><th>Línea</th><th>Acción</th><th>Proto</th><th>Origen</th><th>Destino</th><th>Puerto</th><th>Estado del Flujo</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
       ${h.punto_critico_error ? `<div class="critical-point">⚠️ <b>PUNTO CRÍTICO DEL ERROR:</b> ${esc(h.punto_critico_error)}</div>` : ''}
+      ${archBoxHtml(h)}
       <p class="block-label">Controles normativos incumplidos (CIS / DISA STIG / NIST CSF)</p>
       <ul class="ctrl-list">${h.controles_normativos.map((c) => `<li>${esc(c)}</li>`).join('') || '<li>Sin controles específicos asignados.</li>'}</ul>
       <div class="rep-narrative-grid">

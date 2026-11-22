@@ -5,10 +5,13 @@ from google import genai
 from google.genai import types
 
 from src.config import GEMINI_API_KEY, GEMINI_MODEL, SKILLS_DIR
+from src.deterministic_advisor import DeterministicFirewallAdvisor, enrich_report_zone_context
 from src.models import (
-    ReporteAuditoriaFirewall,
     ContextoTopologia,
+    DictamenExcepcionIA,
+    HallazgoFirewall,
     HallazgoMatematico,
+    ReporteAuditoriaFirewall,
 )
 
 
@@ -75,6 +78,9 @@ class GeminiFirewallAdvisor:
             "- Para cada hallazgo, proporciona un Plan A (Hardening Estricto) y un Plan B (Transición con Logging de prueba).\n"
             "- En 'desglose_visual', desglosa con total precisión la(s) regla(s): si es una colisión/shadowing/redundancia genera 2 filas comparativas ('Regla Superior (Bloqueadora)' vs 'Regla Inferior (Oculta/Tapada)') con rol, secuencia, acción (PERMIT/DENY), protocolo, origen, destino, puerto y estado del flujo. Si es una regla individual (exposición WAN, permisividad, regla temporal), genera 1 fila ('Regla Única').\n"
             "- En 'punto_critico_error', redacta 1 frase concisa y clara remarcando con precisión quirúrgica dónde reside el choque o la vulnerabilidad.\n"
+            "- CRITERIO ARQUITECTÓNICO DE ZONAS Y USO DE 'ANY' (MUY IMPORTANTE):\n"
+            "  * Evalúa siempre la dirección del flujo entre zonas ('sentido_flujo_zonas'): no es lo mismo una regla de SALIDA desde una zona segura hacia una menos segura (ej. LAN ➔ WAN/Internet) que una regla de ENTRADA desde una zona insegura (WAN ➔ DMZ/LAN).\n"
+            "  * En 'veredicto_flexibilidad_any' y 'criterio_arquitectonico_ia', emite una opinión de arquitecto pragmático: explica cuándo SÍ es válido dar libertad con 'any' (ej. destino 'any' en salida de LAN a Internet para navegación web/DNS, u origen 'any' hacia un único host público en DMZ) y qué controles compensatorios aplicar (acotar el origen a la subred LAN para evitar spoofing, bloquear puertos laterales críticos como SMB/445 y exigir reglas específicas hacia la DMZ), en vez de exigir a ciegas que todo sea hiper-específico cuando eso rompería la salida a Internet.\n"
             "- En 'controles_normativos', NUNCA pongas solo códigos secos (como 'CIS-IOS-3.1.4'). DEBES redactar cada control en formato para todo público (APB): 'CODIGO - Nombre Amigable: Explicación sencilla de 1 renglón de qué exige la norma'.\n"
             "- Devuelve ÚNICAMENTE la estructura JSON que valida exactamente contra el esquema requerido."
         )
@@ -108,7 +114,8 @@ class GeminiFirewallAdvisor:
                             raw_text = raw_text[3:]
                         if raw_text.endswith("```"):
                             raw_text = raw_text[:-3]
-                        return ReporteAuditoriaFirewall.model_validate_json(raw_text.strip())
+                        rep = ReporteAuditoriaFirewall.model_validate_json(raw_text.strip())
+                        return enrich_report_zone_context(rep, topology)
                 except Exception as e:
                     last_error = e
                     # Pausa breve si es error 503 o 429 por pico de tráfico
@@ -117,3 +124,51 @@ class GeminiFirewallAdvisor:
                     continue
 
         raise RuntimeError(f"Error consultando Gemini tras reintentar con {models_to_try}: {last_error}")
+
+    def consult_exception(
+        self,
+        finding: HallazgoFirewall,
+        topology: ContextoTopologia,
+        justificacion: str,
+    ) -> DictamenExcepcionIA:
+        """
+        Consultor interactivo de excepciones operativas: evalúa la justificación del usuario
+        según el sentido de confianza entre zonas (ej. salida de zona segura LAN ➔ WAN donde se
+        requiere libertad de destino 'any') y diseña un Plan C con controles compensatorios.
+        Si Gemini no está disponible, utiliza el motor determinístico de arquitectura.
+        """
+        if not self.client:
+            return DeterministicFirewallAdvisor().consult_exception(finding, topology, justificacion)
+
+        prompt = (
+            "Eres un Arquitecto Senior de Ciberseguridad de Redes Cisco. El administrador del firewall "
+            "te plantea una necesidad operativa real sobre el siguiente hallazgo:\n\n"
+            f"- Hallazgo: {finding.id_hallazgo} ({finding.categoria_problema}) en {finding.acl_o_componente}\n"
+            f"- Regla actual: {finding.linea_o_regla_afectada}\n"
+            f"- Sentido de zonas: {finding.sentido_flujo_zonas}\n"
+            f"- Topología: {topology.model_dump_json()}\n"
+            f"- Contexto / Excepción planteada por el operador: \"{justificacion}\"\n\n"
+            "INSTRUCCIONES DE CRITERIO ARQUITECTÓNICO:\n"
+            "1. Evalúa con criterio pragmático el sentido entre zonas: si es tráfico de SALIDA de una zona más segura a una menos segura (ej. LAN ➔ WAN/Internet), reconoce explícitamente que usar destino 'any' es razonable y necesario para navegar a Internet, siempre que se acote el ORIGEN a la subred interna (anti-spoofing), se proteja la DMZ y se bloqueen puertos críticos (ej. SMB 445).\n"
+            "2. Si es un servidor público en DMZ (WAN ➔ DMZ), reconoce que el origen 'any' es necesario, pero exige destino 'host' específico y puerto acotado.\n"
+            "3. Diseña un 'plan_c_adaptado' con comandos Cisco CLI válidos que respeten la libertad operativa solicitada aplicando controles compensatorios inteligentes.\n"
+            "Devuelve ÚNICAMENTE el JSON compatible con DictamenExcepcionIA."
+        )
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                    response_schema=DictamenExcepcionIA,
+                ),
+            )
+            if response and response.text:
+                raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                res = DictamenExcepcionIA.model_validate_json(raw)
+                res.fuente = "gemini"
+                return res
+        except Exception:
+            pass
+        return DeterministicFirewallAdvisor().consult_exception(finding, topology, justificacion)

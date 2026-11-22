@@ -46,6 +46,12 @@ class TestFilterRequest(BaseModel):
     puerto: Optional[int] = Field(None, ge=1, le=65535)
 
 
+class ExceptionConsultRequest(BaseModel):
+    """Consultor de Excepciones Operativas y Criterio de Zonas (RF-16)."""
+    id_hallazgo: str = Field(..., max_length=80)
+    justificacion: str = Field(..., min_length=3, max_length=600)
+
+
 class WhatIfRequest(BaseModel):
     """Centro de decisiones (RF-12): decisión por hallazgo: 'A', 'B' o 'NONE' (omitir)."""
     decisiones: Dict[str, str] = Field(default_factory=dict, max_length=200)
@@ -168,6 +174,16 @@ def zombies(session_id: str):
     """Reglas inactivas/zombi con contador hitcnt=0 o (0 matches) (MEJ-02)."""
     s = _session(session_id)
     return {"reglas": service.zombies(s), "total_con_hitcnt": s.topology.total_reglas_con_hitcnt}
+
+
+@router.post("/session/{session_id}/advisor/exception")
+def consult_exception(session_id: str, req: ExceptionConsultRequest):
+    """Evalúa una excepción operativa según el sentido entre zonas y diseña un Plan C adaptado (RF-16)."""
+    s = _session(session_id)
+    try:
+        return service.consult_exception(s, req.id_hallazgo, req.justificacion)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.get("/session/{session_id}/exposure")

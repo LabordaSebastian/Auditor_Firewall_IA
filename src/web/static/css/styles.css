@@ -280,6 +280,24 @@ th { color: var(--muted); font-weight: 500; font-size: 0.78rem; text-transform: 
 .chev { transition: transform 0.2s; color: var(--muted); }
 .permit { color: var(--ok); font-weight: 700; } .deny { color: var(--crit); font-weight: 700; }
 .critical-point { margin: 14px 0; padding: 12px 16px; border-radius: 12px; background: hsla(354, 78%, 56%, 0.12); border-left: 4px solid var(--crit); font-size: 0.88rem; }
+.arch-box {
+  margin: 14px 0; padding: 13px 16px; border-radius: 12px;
+  background: hsla(200, 80%, 50%, 0.08); border: 1px solid hsla(199, 89%, 52%, 0.32);
+  border-left: 4px solid var(--accent); font-size: 0.86rem; line-height: 1.58;
+}
+.arch-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.arch-dir { font-size: 0.8rem; color: var(--accent); }
+.arch-pill { padding: 2px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.arch-pill.ok { background: hsla(158, 64%, 48%, 0.16); color: var(--ok); border: 1px solid hsla(158, 64%, 48%, 0.45); }
+.arch-pill.warn { background: hsla(43, 96%, 58%, 0.16); color: var(--med); border: 1px solid hsla(43, 96%, 58%, 0.45); }
+.arch-pill.bad { background: hsla(354, 78%, 56%, 0.16); color: var(--crit); border: 1px solid hsla(354, 78%, 56%, 0.45); }
+.arch-pill.info { background: hsla(199, 89%, 52%, 0.14); color: var(--accent); border: 1px solid hsla(199, 89%, 52%, 0.4); }
+.arch-body { margin: 0; color: var(--text); }
+.exc-box { margin-top: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: hsla(222, 45%, 8%, 0.55); }
+.exc-result { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.report-doc.paper-mode .arch-box { background: #f0f9ff; border-color: #bae6fd; border-left-color: #0284c7; color: #0f172a; }
+.report-doc.paper-mode .arch-dir { color: #0369a1; }
+.report-doc.paper-mode .arch-body { color: #1e293b; }
 .ctrl-list { list-style: none; display: grid; gap: 6px; margin: 8px 0 14px; font-size: 0.85rem; }
 .ctrl-list li::before { content: '🛡️ '; }
 .block-label { margin: 14px 0 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }

@@ -64,8 +64,40 @@ class HallazgoFirewall(BaseModel):
     como_mejora_la_red: str = Field(description="Beneficio directo de seguridad o rendimiento al corregir esta regla")
     nivel_impacto_operativo: NivelImpactoEnum
     analisis_blast_radius: str = Field(description="Qué flujos, usuarios o servicios podrían verse afectados al aplicar el cambio")
+    sentido_flujo_zonas: str = Field(
+        default="N/D",
+        description="Dirección y relación de confianza entre zonas, ej: 'Salida: Zona Segura (LAN) ➔ Zona Menos Segura (WAN)', 'Entrada: Zona No Confiable (WAN) ➔ DMZ', 'Plano de Gestión'",
+    )
+    veredicto_flexibilidad_any: str = Field(
+        default="NO_APLICA",
+        description="'FLEXIBILIDAD_JUSTIFICADA' (ej. destino any en salida LAN->WAN u origen any a host público), 'EQUILIBRIO_PRAGMATICO' (aceptable con controles compensatorios), 'RIESGO_INJUSTIFICADO' (entrada WAN->interior sin acotar), o 'HIGIENE_Y_CONTROL'",
+    )
+    criterio_arquitectonico_ia: str = Field(
+        default="",
+        description="Opinión experta contextual sobre el uso de 'any' o amplitud de la regla según el sentido entre zonas seguras y menos seguras, y qué controles compensatorios aplicar.",
+    )
     plan_a_recomendado: OpcionDecision
     plan_b_conservador: OpcionDecision
+
+
+class DictamenExcepcionIA(BaseModel):
+    """Respuesta del Consultor de Excepciones Operativas (evalúa cuándo mantener flexibilidad o 'any' y genera un Plan C)."""
+    id_hallazgo: str
+    justificacion_usuario: str
+    veredicto_arquitecto: str = Field(
+        description="'EXCEPCION_VALIDA' | 'ACEPTABLE_CON_COMPENSACION' | 'NO_RECOMENDADO'"
+    )
+    opinion_experta: str = Field(
+        description="Análisis de arquitectura considerando la dirección entre zonas (segura -> menos segura vs. entrante) y el impacto real del uso de 'any' o del puerto solicitado."
+    )
+    controles_compensatorios: List[str] = Field(
+        default_factory=list,
+        description="Medidas de compensación recomendadas (ej. acotar origen a subred LAN, mantener destino any solo en puertos 80/443/53, activar inspección stateful o logging).",
+    )
+    plan_c_adaptado: OpcionDecision = Field(
+        description="Plan C de remediación flexible adaptado a la necesidad operativa del usuario."
+    )
+    fuente: str = "gemini"
 
 
 class ResumenEjecutivo(BaseModel):

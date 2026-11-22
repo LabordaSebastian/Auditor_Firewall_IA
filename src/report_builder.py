@@ -175,6 +175,9 @@ class ReportBuilder:
 
             lines.extend([
                 "",
+                f"**Sentido de Zonas:** `{h.sentido_flujo_zonas}` | **Criterio de Uso de 'Any':** `{h.veredicto_flexibilidad_any}`  ",
+                f"**Criterio Arquitectónico:** {h.criterio_arquitectonico_ia}",
+                "",
                 f"**Diagnóstico Técnico:**  ",
                 f"{h.diagnostico_tecnico}",
                 "",

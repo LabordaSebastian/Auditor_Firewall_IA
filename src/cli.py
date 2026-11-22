@@ -12,6 +12,7 @@ from src.config import REPORTS_DIR, GEMINI_API_KEY, GEMINI_MODEL, BATFISH_HOST, 
 from src.sanitizer import ConfigSanitizer
 from src.topology_extractor import CiscoTopologyExtractor
 from src.batfish_analyzer import BatfishAnalyzer, BatfishUnavailableError
+from src.deterministic_advisor import DeterministicFirewallAdvisor
 from src.gemini_advisor import GeminiFirewallAdvisor
 from src.report_builder import ReportBuilder
 
@@ -236,14 +237,21 @@ def audit(
             )
             raise typer.Exit(code=1)
 
-        # Etapa 4: Razonamiento Cognitivo con Gemini y Skill
-        task4 = progress.add_task(f"[cyan]Etapa 4: Razonamiento semántico con Gemini ({GEMINI_MODEL})...", total=None)
-        advisor = GeminiFirewallAdvisor()
-        report = advisor.analyze(sanitized_config, topology, math_findings)
-        progress.update(
-            task4,
-            description=f"[green]Etapa 4: Evaluación de Gemini completada.[/green] ({len(report.hallazgos)} hallazgos normativos y técnicos)",
-        )
+        # Etapa 4: Razonamiento Cognitivo con Gemini y Skill (con respaldo determinístico autónomo)
+        task4 = progress.add_task(f"[cyan]Etapa 4: Razonamiento de arquitectura y zonas ({GEMINI_MODEL})...", total=None)
+        try:
+            advisor = GeminiFirewallAdvisor()
+            report = advisor.analyze(sanitized_config, topology, math_findings)
+            progress.update(
+                task4,
+                description=f"[green]Etapa 4: Evaluación de Gemini completada.[/green] ({len(report.hallazgos)} hallazgos con criterio de zonas)",
+            )
+        except Exception as exc:
+            report = DeterministicFirewallAdvisor().analyze(sanitized_config, topology, math_findings)
+            progress.update(
+                task4,
+                description=f"[yellow]Etapa 4: Motor determinístico local aplicado ({type(exc).__name__}).[/yellow] ({len(report.hallazgos)} hallazgos)",
+            )
 
         # Etapa 5: De-sanitización y Generación de Entregables
         task5 = progress.add_task("[cyan]Etapa 5: Generando reportes y scripts CLI...", total=None)

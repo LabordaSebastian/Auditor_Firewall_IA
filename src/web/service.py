@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from src.batfish_analyzer import BatfishAnalyzer, BatfishUnavailableError
 from src.config import BATFISH_HOST, BATFISH_PORT, GEMINI_API_KEY, GEMINI_MODEL, REPORTS_DIR, SNAPSHOTS_DIR
 from src.config_patcher import apply_commands
+from src.deterministic_advisor import DeterministicFirewallAdvisor, enrich_report_zone_context
 from src.gemini_advisor import GeminiFirewallAdvisor
 from src.prioritization import (
     commands_by_finding, build_scripts, default_decisions, normalize_decisions, projected_score, rank_findings,
@@ -211,31 +212,39 @@ class AuditService:
 
         def from_cache() -> Optional[ReporteAuditoriaFirewall]:
             if cache_path.exists():
-                return ReporteAuditoriaFirewall.model_validate_json(cache_path.read_text(encoding="utf-8"))
+                rep = ReporteAuditoriaFirewall.model_validate_json(cache_path.read_text(encoding="utf-8"))
+                return enrich_report_zone_context(rep, topology)
             return None
+
+        def from_deterministic() -> ReporteAuditoriaFirewall:
+            rep = DeterministicFirewallAdvisor().analyze(sanitized, topology, math_findings)
+            rep = ReportBuilder(REPORTS_DIR).desanitize_report(rep, lookup_map)
+            return enrich_report_zone_context(rep, topology)
 
         if prefer_cache or not use_ai:
             cached = from_cache()
-            if cached:
+            if cached and prefer_cache:
                 return cached, "cache", None
             if not use_ai:
-                return None, "none", None
+                return from_deterministic(), "deterministico", None
+            if cached:
+                return cached, "cache", None
 
         if not GEMINI_API_KEY:
             cached = from_cache()
-            return (cached, "cache", None) if cached else (None, "none", "GEMINI_API_KEY no configurada")
+            return (cached, "cache", None) if cached else (from_deterministic(), "deterministico", "GEMINI_API_KEY no configurada (usando motor determinístico)")
         try:
             report = GeminiFirewallAdvisor().analyze(sanitized, topology, math_findings)
             report = ReportBuilder(REPORTS_DIR).desanitize_report(report, lookup_map)
-            return report, "gemini", None
-        except Exception as exc:  # fallo de red/cuota: degradar a caché si existe
+            return enrich_report_zone_context(report, topology), "gemini", None
+        except Exception as exc:  # fallo de red/cuota: degradar a caché o motor determinístico
             cached = from_cache()
             err = f"{type(exc).__name__}: {str(exc)[:200]}"
-            return (cached, "cache", err) if cached else (None, "none", err)
+            return (cached, "cache", err) if cached else (from_deterministic(), "deterministico", err)
 
     # ------------------------------------------------------------------ payloads
     def summary(self, s: AuditSession) -> Dict[str, Any]:
-        rep = s.report
+        rep = enrich_report_zone_context(s.report, s.topology) if s.report else None
         sev = Counter(h.severidad.value for h in rep.hallazgos) if rep else Counter()
         cat = Counter(h.categoria_problema for h in rep.hallazgos) if rep else Counter()
         return {
@@ -266,6 +275,22 @@ class AuditService:
         """Reglas zombi con hitcnt=0 / (0 matches) detectadas en la configuración (MEJ-02)."""
         data = [z.model_dump() for z in s.topology.reglas_zombi]
         return self._deep_desanitize(data, s.lookup_map)
+
+    def consult_exception(self, s: AuditSession, id_hallazgo: str, justificacion: str) -> Dict[str, Any]:
+        """
+        Consultor de Excepciones Operativas y Criterio de Zonas (MEJ-11 / RF-16):
+        Evalúa cuándo mantener cierta libertad (ej. destino 'any' en salida de zona segura a menos
+        segura) y genera un Plan C con controles compensatorios.
+        """
+        if not s.report:
+            raise ValueError("No hay hallazgos en la sesión para evaluar excepciones.")
+        finding = next((h for h in s.report.hallazgos if h.id_hallazgo == id_hallazgo), None)
+        if not finding:
+            raise ValueError(f"Hallazgo desconocido: {id_hallazgo}")
+        just_san = self._resanitize(justificacion.strip(), s.lookup_map)
+        dictamen = GeminiFirewallAdvisor().consult_exception(finding, s.topology, just_san)
+        payload = dictamen.model_dump(mode="json")
+        return self._deep_desanitize(payload, s.lookup_map)
 
     def sanitization_view(self, s: AuditSession) -> Dict[str, Any]:
         view = ConfigSanitizer.build_sanitization_view(s.raw_config, s.sanitized_config, s.lookup_map)

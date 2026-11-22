@@ -461,7 +461,10 @@ def _draw_finding(pdf: ExecutivePDFReport, h: HallazgoFirewall, pos: int, gain_a
     for ctrl in (h.controles_normativos or ["Sin controles especificos asignados."]):
         pdf.para(f"- {ctrl}", size=8.4, color=BODY)
 
-    # Bloques informativos de diagnóstico, beneficio y blast radius (sin Plan A / Plan B ni CLI)
+    # Bloques informativos de criterio de zonas, diagnóstico, beneficio y blast radius (sin Plan A / Plan B ni CLI)
+    if h.criterio_arquitectonico_ia:
+        zona_hdr = f"Criterio Arquitectonico de Zonas ({h.sentido_flujo_zonas})"
+        pdf.info_box(zona_hdr, h.criterio_arquitectonico_ia)
     pdf.info_box("Diagnostico Tecnico y Vector de Riesgo", h.diagnostico_tecnico)
     pdf.info_box("Beneficio de Mitigacion (Como Mejora la Red)", h.como_mejora_la_red)
     pdf.info_box(f"Analisis de Blast Radius ({h.nivel_impacto_operativo.value})", h.analisis_blast_radius)
