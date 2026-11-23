@@ -538,7 +538,10 @@ function renderFindings() {
     out.innerHTML = '<div class="empty"><span class="spinner"></span><p style="margin-top:8px">Evaluando sentido de zonas y diseñando Plan C con controles compensatorios…</p></div>';
     try {
       customPlanC[id] = await post(`/api/session/${S.id}/advisor/exception`, { id_hallazgo: id, justificacion: just });
+      WI.dec[id] = 'C';
+      drawWiTable();
       renderFindings();
+      toast('Plan C generado y seleccionado en el Centro de Decisiones What-If.', 'ok');
     } catch (e) {
       out.innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
       b.disabled = false;
@@ -704,10 +707,15 @@ async function runSim() {
   try {
     const r = await post(`/api/session/${S.id}/traceroute`, body);
     const dec = r.filtro_decisivo;
-    box.className = `sim-result show ${r.permitido ? 'ok' : 'bad'}`;
-    box.innerHTML = `<b>${r.permitido ? '✅ Tráfico PERMITIDO' : '⛔ Tráfico DENEGADO'}</b> · disposición <code>${esc(r.disposicion)}</code>
+    const ret = r.retorno;
+    const retHtml = !r.permitido ? '' : !ret ? '' : ret.permitido
+      ? `<div class="alert ok" style="margin-top:8px">↩️ <b>Tráfico de retorno PERMITIDO</b> · la respuesta del destino vuelve al origen (<code>${esc(ret.disposicion)}</code>).</div>`
+      : `<div class="alert err" style="margin-top:8px">↩️ <b>Tráfico de retorno DENEGADO</b> · la ida pasa pero <b>la respuesta se descarta</b> (<code>${esc(ret.disposicion)}</code>)${ret.filtro_decisivo ? ` en <code>${esc(ret.filtro_decisivo.filtro)}</code> (${esc(ret.filtro_decisivo.direccion)})` : ''}. La sesión no se completará: la ACL no tiene estado. Agrega una regla de retorno (p. ej. <code>permit tcp any any established</code>) o revisa el filtro indicado.</div>`;
+    box.className = `sim-result show ${r.permitido && (!ret || ret.permitido) ? 'ok' : 'bad'}`;
+    box.innerHTML = `<b>${r.permitido ? '✅ Tráfico PERMITIDO (ida)' : '⛔ Tráfico DENEGADO'}</b> · disposición <code>${esc(r.disposicion)}</code>
       ${dec ? `<br>Filtro decisivo: <code>${esc(dec.filtro)}</code> (${esc(dec.direccion)}) → <b>${esc(dec.accion)}</b>` : ''}
       ${r.regla ? `<br>Regla: <code>${esc(r.regla)}</code>` : ''}
+      ${retHtml}
       <div class="hops">${r.hops.map((h) => `▸ ${esc(h.nodo)}<br>` + h.pasos.map((p) => `&nbsp;&nbsp;${esc(p.accion)} · ${esc(p.detalle)}`).join('<br>')).join('<br>')}</div>`;
     const dstNode = (S.grafo.zonas.find((z) => inSubnet(body.dst_ip, z.subred)) || {}).nombre || (S.grafo.nodos.some((n) => n.id === 'Internet') ? 'Internet' : null);
     Topo.sendPacket(body.zona_origen, dstNode, r.permitido);
@@ -986,7 +994,9 @@ function wiEstimate() {
   let delta = 0, aplicados = 0;
   (S.prioridades || []).forEach((p) => {
     const d = WI.dec[p.id];
-    if (d === 'A') { delta += p.ganancia_a; aplicados++; } else if (d === 'B') { delta += p.ganancia_b; aplicados++; }
+    if (d === 'A') { delta += p.ganancia_a; aplicados++; }
+    else if (d === 'C') { delta += p.ganancia_a * 0.85; aplicados++; }
+    else if (d === 'B') { delta += p.ganancia_b; aplicados++; }
   });
   const est = Math.max(0, Math.min(100, Math.round(r.score_seguridad_actual + delta)));
   return { actual: r.score_seguridad_actual, est, aplicados, total: (S.prioridades || []).length };
@@ -1015,14 +1025,16 @@ function renderWhatIf() {
 function drawWiTable() {
   const rows = S.prioridades.map((p) => {
     const d = WI.dec[p.id] || 'NONE';
+    const hasC = !!(customPlanC[p.id] || d === 'C');
+    const ptsC = (p.ganancia_a * 0.85).toFixed(2);
     const radio = (v, label) => `<label><input type="radio" name="dec_${esc(p.id)}" value="${v}" ${d === v ? 'checked' : ''} data-id="${esc(p.id)}"><span>${label}</span></label>`;
     return `<tr class="${d === 'NONE' ? 'off' : ''}">
       <td><span class="rank">${p.posicion}</span></td>
       <td><span class="sev ${esc(p.severidad)}">${esc(p.severidad)}</span></td>
       <td><b>${esc(p.categoria)}</b><br><span class="meta">${esc(p.id)} · ${esc(p.acl)}</span></td>
       <td>${esc(p.impacto)} ${p.quick_win ? '<span class="qw">⚡ bajo riesgo</span>' : ''}<br><span class="meta">${p.confirmado_por_batfish ? '✔ Batfish' : 'Semántico'}</span></td>
-      <td><div class="dec-group" role="radiogroup" aria-label="Decisión para ${esc(p.id)}">${radio('A', 'Plan A')}${radio('B', 'Plan B')}${radio('NONE', 'Omitir')}</div></td>
-      <td style="font-family:var(--mono);font-size:.78rem">${d === 'A' ? '+' + p.ganancia_a : d === 'B' ? '+' + p.ganancia_b : '—'}</td></tr>`;
+      <td><div class="dec-group" role="radiogroup" aria-label="Decisión para ${esc(p.id)}">${radio('A', 'Plan A')}${radio('B', 'Plan B')}${hasC ? radio('C', '🧠 Plan C') : ''}${radio('NONE', 'Omitir')}</div></td>
+      <td style="font-family:var(--mono);font-size:.78rem">${d === 'A' ? '+' + p.ganancia_a : d === 'C' ? '+' + ptsC : d === 'B' ? '+' + p.ganancia_b : '—'}</td></tr>`;
   }).join('');
   $('wiTable').innerHTML = `<div style="overflow-x:auto"><table class="wi-table"><thead><tr><th>#</th><th>Severidad</th><th>Hallazgo</th><th>Riesgo de cambio</th><th>Decisión</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   $('wiTable').querySelectorAll('input[type=radio]').forEach((r) => r.addEventListener('change', () => {

@@ -63,15 +63,21 @@ class BatfishAnalyzer:
             reachability_df = self.session.q.filterLineReachability().answer().frame()
 
             for _, row in reachability_df.iterrows():
-                filter_name = str(row.get("Filter_Name", "ACL_DESCONOCIDA"))
-                line_content = str(row.get("Line", ""))
+                sources = row.get("Sources")
+                if sources and len(sources) > 0:
+                    src_str = str(sources[0])
+                    filter_name = src_str.split(":", 1)[1].strip() if ":" in src_str else src_str.strip()
+                else:
+                    filter_name = str(row.get("Filter_Name", "ACL_DESCONOCIDA"))
+                line_content = str(row.get("Unreachable_Line") or row.get("Line") or "")
                 line_index = int(row.get("Line_Index", 0))
-                action = str(row.get("Action", ""))
-                reasons = row.get("Unreachable_Line_Action", "UNREACHABLE")
+                action = str(row.get("Unreachable_Line_Action") or row.get("Action") or "")
+                reasons = str(row.get("Reason") or row.get("Unreachable_Line_Action") or "UNREACHABLE")
+                diff_action = row.get("Different_Action")
                 blocking_lines = row.get("Blocking_Lines", [])
 
                 tipo = "SHADOWED"
-                if "REDUNDANT" in str(reasons).upper():
+                if "REDUNDANT" in reasons.upper() or (diff_action is False and action.upper() == "PERMIT"):
                     tipo = "REDUNDANT"
 
                 blocking_desc = ""
@@ -84,7 +90,7 @@ class BatfishAnalyzer:
                     blocking_desc = f" Bloqueada por regla superior: {linea_bloqueadora}."
 
                 # Si es un Permit bloqueando un Deny posterior, es Critical Shadowing
-                if action.lower() == "deny" and tipo == "SHADOWED":
+                if action.lower() == "deny" and (tipo == "SHADOWED" or diff_action is True):
                     tipo = "CRITICAL_SHADOWING"
 
                 findings.append(
@@ -327,6 +333,9 @@ class BatfishAnalyzer:
                 rule_line = None
 
         permitted = disposition in self.SUCCESS_DISPOSITIONS
+        retorno: Optional[Dict[str, Any]] = None
+        if permitted:
+            retorno = self._return_path(node, location, headers, snap)
         return {
             "permitido": permitted,
             "disposicion": disposition,
@@ -335,7 +344,31 @@ class BatfishAnalyzer:
             "filtro_decisivo": decisive,
             "regla": rule_line,
             "bloqueado_en": None if permitted else (decisive or {"filtro": None}),
+            "retorno": retorno,
         }
+
+    def _return_path(self, node: str, location: str, headers: Any, snap: str) -> Optional[Dict[str, Any]]:
+        """
+        Tráfico de retorno (respuesta) del flujo: bf.q.bidirectionalTraceroute(). Detecta ACLs sin estado
+        (sin `established` / reflexivas) que dejan pasar la ida pero descartan la respuesta, p. ej. una
+        ACL de entrada WAN que bloquea el SYN-ACK de una navegación web iniciada desde la LAN.
+        """
+        try:
+            df = self.session.q.bidirectionalTraceroute(
+                startLocation=location, headers=headers
+            ).answer(snapshot=snap).frame()
+            if df.empty or not df.iloc[0]["Reverse_Traces"]:
+                return None
+            rtrace = df.iloc[0]["Reverse_Traces"][0]
+            rdisp = str(rtrace.disposition)
+            rhops, rdecisive = self._decisive_filter(rtrace)
+            ok = rdisp in self.SUCCESS_DISPOSITIONS
+            return {
+                "permitido": ok, "disposicion": rdisp, "hops": rhops, "filtro_decisivo": rdecisive,
+                "flujo": self._flow_info(df.iloc[0]["Reverse_Flow"]) if "Reverse_Flow" in df.columns else None,
+            }
+        except Exception:
+            return None  # complementario: no debe romper la simulación de ida
 
     def scan_exposed_ports(
         self,
@@ -348,17 +381,23 @@ class BatfishAnalyzer:
         Escaneo de puertos críticos: bf.q.searchFilters() busca, para cada ACL de entrada WAN,
         un flujo PERMITIDO hacia cada servicio de riesgo. Cada resultado es una exposición formal.
         """
-        from pybatfish.datamodel.flow import HeaderConstraints
+        from pybatfish.datamodel.flow import HeaderConstraints, MatchTcpFlags, TcpFlags
 
         snap = "snap_exposure"
         self._load_snapshot(config_text, filename, snap, network_name)
         results: List[Dict[str, Any]] = []
+        # Una exposición es poder INICIAR una conexión desde fuera (SYN sin ACK); las reglas de retorno
+        # `established` solo admiten paquetes con ACK/RST y no abren servicios.
+        syn_only = MatchTcpFlags(TcpFlags(syn=True), useSyn=True, useAck=True)
         for acl in acl_names:
             for service, proto, port in self.CRITICAL_SERVICES:
                 try:
+                    hdr_kwargs: Dict[str, Any] = {"ipProtocols": [proto], "dstPorts": port}
+                    if proto == "TCP":
+                        hdr_kwargs["tcpFlags"] = syn_only
                     df = self.session.q.searchFilters(
                         filters=acl,
-                        headers=HeaderConstraints(ipProtocols=[proto], dstPorts=port),
+                        headers=HeaderConstraints(**hdr_kwargs),
                         action="permit",
                     ).answer(snapshot=snap).frame()
                 except Exception:

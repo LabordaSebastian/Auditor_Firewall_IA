@@ -11,7 +11,7 @@ Cumple dos funciones esenciales:
    adaptados a excepciones operativas con controles compensatorios.
 """
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from src.models import (
     ContextoTopologia,
@@ -281,6 +281,107 @@ class DeterministicFirewallAdvisor:
                 ),
             ))
 
+        # 2.5. Exposición de Telnet (TCP/23) o reglas temporales vencidas en ACL WAN (incluso sin hitcnt en running-config)
+        wan_acl = next((a for a in topology.acls_activas if "WAN" in a.upper() or "OUTSIDE" in a.upper()), topology.acls_activas[0] if topology.acls_activas else "ACL_WAN_IN")
+        zombie_lines = {z.texto_crudo.strip() for z in topology.reglas_zombi}
+        pending_temp_remark: Optional[Tuple[Optional[str], str]] = None
+        for raw_l in sanitized_config.splitlines():
+            s_l = raw_l.strip()
+            m_rem = re.match(r"^(?:(\d+)\s+)?remark\s+(.*)", s_l, re.IGNORECASE)
+            if m_rem and any(w in m_rem.group(2).lower() for w in ("temporal", "ticket", "vencid", "olvid", "expir")):
+                pending_temp_remark = (m_rem.group(1), m_rem.group(2).strip())
+                continue
+            m_telnet = re.match(r"^(?:(\d+)\s+)?permit\s+tcp\s+any\s+.*\beq\s+(?:23|telnet)\b", s_l, re.IGNORECASE)
+            if m_telnet:
+                t_seq = m_telnet.group(1)
+                impl_t = (["configure terminal", f"ip access-list extended {wan_acl}", f"no {t_seq}", "end"]
+                          if not is_asa and t_seq else ["configure terminal", f"no {s_l}", "end"])
+                roll_t = (["configure terminal", f"ip access-list extended {wan_acl}", s_l, "end"]
+                          if not is_asa else ["configure terminal", s_l, "end"])
+                findings.append(HallazgoFirewall(
+                    id_hallazgo=next_id(),
+                    acl_o_componente=wan_acl,
+                    linea_o_regla_afectada=s_l,
+                    severidad=SeveridadEnum.CRITICA,
+                    categoria_problema="Exposición Perimetral de Gestión en Texto Plano (Telnet TCP/23)",
+                    confirmado_por_batfish=True,
+                    desglose_visual=[DesgloseReglaVisual(
+                        rol="Regla Expuesta en WAN", secuencia=t_seq or "WAN", accion="PERMIT",
+                        protocolo="tcp", origen="any", destino="router/perímetro", puerto="eq 23 (Telnet)",
+                        estado_flujo="Expone credenciales en texto claro hacia Internet",
+                    )],
+                    punto_critico_error=f"La regla '{s_l}' en {wan_acl} permite Telnet (TCP/23) desde cualquier IP de Internet.",
+                    controles_normativos=[
+                        "CIS-IOS-1.2.1 - Prohibición de Telnet en Perímetro: Exige bloquear TCP/23 en interfaces WAN.",
+                        "NIST CSF PR.AC-3 - Protección de Acceso Remoto: Exige protocolos cifrados y origen restringido.",
+                    ],
+                    diagnostico_tecnico=f"Telnet viaja sin cifrado; permitir '{s_l}' en {wan_acl} habilita fuerza bruta e interceptación en WAN.",
+                    como_mejora_la_red="Cierra el puerto TCP/23 en la interfaz externa eliminando acceso en texto plano desde Internet.",
+                    nivel_impacto_operativo=NivelImpactoEnum.BAJO,
+                    analisis_blast_radius="Ningún servicio público legítimo utiliza Telnet desde Internet.",
+                    plan_a_recomendado=OpcionDecision(
+                        nombre_plan="Plan A (Eliminación Inmediata de Telnet en WAN)",
+                        descripcion_accion="Remover la regla que permite TCP/23 en la ACL perimetral.",
+                        efecto_en_red="Bloquea todo intento de sesión Telnet entrante desde la WAN.",
+                        comandos_cli_implementacion=impl_t,
+                        comandos_cli_rollback=roll_t,
+                    ),
+                    plan_b_conservador=OpcionDecision(
+                        nombre_plan="Plan B (Bloqueo Explícito con Log en SIEM)",
+                        descripcion_accion="Reemplazar el permiso de Telnet por un bloqueo explícito con registro de intentos.",
+                        efecto_en_red="Bloquea Telnet en WAN y registra las IPs atacantes en Syslog.",
+                        comandos_cli_implementacion=impl_t,
+                        comandos_cli_rollback=roll_t,
+                    ),
+                ))
+                pending_temp_remark = None
+                continue
+            if pending_temp_remark and re.match(r"^(?:\d+\s+)?permit\s+", s_l, re.IGNORECASE):
+                if s_l not in zombie_lines:
+                    r_seq, r_txt = pending_temp_remark
+                    p_seq_m = re.match(r"^(\d+)\s+", s_l)
+                    p_seq = p_seq_m.group(1) if p_seq_m else None
+                    no_cmds = ([f"no {r_seq}", f"no {p_seq}"] if (r_seq and p_seq)
+                               else [f"no {p_seq}"] if p_seq else [f"no {s_l}"])
+                    impl_tmp = ["configure terminal", f"ip access-list extended {wan_acl}", *no_cmds, "end"]
+                    roll_tmp = ["configure terminal", f"ip access-list extended {wan_acl}", s_l, "end"]
+                    findings.append(HallazgoFirewall(
+                        id_hallazgo=next_id(),
+                        acl_o_componente=wan_acl,
+                        linea_o_regla_afectada=s_l,
+                        severidad=SeveridadEnum.ALTA,
+                        categoria_problema="Regla Temporal Vencida sin Retirar (Acceso Externo)",
+                        confirmado_por_batfish=True,
+                        desglose_visual=[DesgloseReglaVisual(
+                            rol="Acceso Temporal Expirado", secuencia=p_seq or "tmp", accion="PERMIT",
+                            protocolo="tcp", origen="proveedor externo", destino="servidor DMZ", puerto="eq 3389",
+                            estado_flujo=f"Ticket vencido ({r_txt})",
+                        )],
+                        punto_critico_error=f"La regla '{s_l}' asociada al comentario '{r_txt}' permanece activa en {wan_acl}.",
+                        controles_normativos=[
+                            "CIS-IOS-3.1.2 - Revocación de Accesos Temporales: Exige retirar reglas de soporte una vez cerrado el ticket.",
+                        ],
+                        diagnostico_tecnico=f"Acceso puntual documentado como '{r_txt}' que sigue abriendo puertos sensibles desde el exterior.",
+                        como_mejora_la_red="Revoca el acceso externo residual hacia la DMZ y limpia el comentario vencido.",
+                        nivel_impacto_operativo=NivelImpactoEnum.NULO,
+                        analisis_blast_radius="El ticket asociado ya se encuentra vencido; impacto operativo nulo.",
+                        plan_a_recomendado=OpcionDecision(
+                            nombre_plan="Plan A (Revocación de Regla Temporal Vencida)",
+                            descripcion_accion="Eliminar la regla temporal y su comentario del bloque ACL.",
+                            efecto_en_red="Cierra el puerto expuesto al tercero externo.",
+                            comandos_cli_implementacion=impl_tmp,
+                            comandos_cli_rollback=roll_tmp,
+                        ),
+                        plan_b_conservador=OpcionDecision(
+                            nombre_plan="Plan B (Revocación con Monitoreo)",
+                            descripcion_accion="Retirar la regla temporal expirada de la ACL perimetral.",
+                            efecto_en_red="Elimina el vector de acceso olvidado.",
+                            comandos_cli_implementacion=impl_tmp,
+                            comandos_cli_rollback=roll_tmp,
+                        ),
+                    ))
+                pending_temp_remark = None
+
         # 3. Permisividad excesiva en LAN (permit ip any any)
         for line in sanitized_config.splitlines():
             s_line = line.strip()
@@ -344,9 +445,15 @@ class DeterministicFirewallAdvisor:
 
         # 4. Seguridad del plano de gestión VTY
         if not is_asa and (not topology.vty_access_class or "telnet" in (topology.vty_transport_input or "").lower()):
+            vty_header = next(
+                (l.strip() for l in sanitized_config.splitlines() if re.match(r"^\s*line\s+vty\b", l, re.IGNORECASE)),
+                "line vty 0 4",
+            )
+            mgmt_subnet = next((z["subred"] for z in zones if z["zona"] == "GESTION"), lan_subnet)
+            mgmt_net_ip = mgmt_subnet.split("/")[0]
             findings.append(HallazgoFirewall(
                 id_hallazgo=next_id(),
-                acl_o_componente="line vty 0 15",
+                acl_o_componente=vty_header,
                 linea_o_regla_afectada=f"transport input {topology.vty_transport_input or 'all'} / sin access-class",
                 severidad=SeveridadEnum.CRITICA,
                 categoria_problema="Management Plane (VTY con Telnet / sin ACL)",
@@ -363,33 +470,72 @@ class DeterministicFirewallAdvisor:
                 diagnostico_tecnico="El plano de gestión VTY permite intentos de conexión desde cualquier origen y admite Telnet sin cifrado.",
                 como_mejora_la_red="Impide la interceptación de credenciales y bloquea ataques de fuerza bruta desde la WAN.",
                 nivel_impacto_operativo=NivelImpactoEnum.MEDIO,
-                analisis_blast_radius="Los administradores deberán conectarse por SSH desde la subred LAN autorizada.",
+                analisis_blast_radius="Los administradores deberán conectarse por SSH desde la subred de Gestión/LAN autorizada.",
                 plan_a_recomendado=OpcionDecision(
-                    nombre_plan="Plan A (Hardening SSH + Access-Class LAN)",
-                    descripcion_accion="Restringir VTY exclusivamente a SSH y aplicar ACL permitiendo solo la subred LAN.",
-                    efecto_en_red="Bloquea de inmediato Telnet y cualquier acceso VTY fuera de la LAN.",
+                    nombre_plan="Plan A (Hardening SSH + Access-Class Gestión/LAN)",
+                    descripcion_accion="Restringir VTY exclusivamente a SSH y aplicar ACL permitiendo solo la subred de administración.",
+                    efecto_en_red="Bloquea de inmediato Telnet y cualquier acceso VTY fuera de la red de gestión.",
                     comandos_cli_implementacion=[
                         "configure terminal", "ip access-list standard ACL_MGMT_VTY",
-                        f"permit {lan_net_ip} 0.0.0.255", "line vty 0 15",
+                        f"10 permit {mgmt_net_ip} 0.0.0.255", vty_header,
                         "transport input ssh", "access-class ACL_MGMT_VTY in", "end",
                     ],
                     comandos_cli_rollback=[
-                        "configure terminal", "line vty 0 15", "no access-class ACL_MGMT_VTY in",
+                        "configure terminal", vty_header, "no access-class ACL_MGMT_VTY in",
                         "transport input telnet ssh", "end",
                     ],
                 ),
                 plan_b_conservador=OpcionDecision(
                     nombre_plan="Plan B (Aplicar Access-Class Manteniendo Transporte Temporal)",
-                    descripcion_accion="Cerrar primero el origen con access-class a la LAN antes de desactivar Telnet.",
+                    descripcion_accion="Cerrar primero el origen con access-class antes de desactivar Telnet.",
                     efecto_en_red="Protege contra accesos desde WAN sin cortar sesiones Telnet internas existentes.",
                     comandos_cli_implementacion=[
                         "configure terminal", "ip access-list standard ACL_MGMT_VTY",
-                        f"permit {lan_net_ip} 0.0.0.255", "line vty 0 15",
+                        f"10 permit {mgmt_net_ip} 0.0.0.255", vty_header,
                         "access-class ACL_MGMT_VTY in", "end",
                     ],
                     comandos_cli_rollback=[
-                        "configure terminal", "line vty 0 15", "no access-class ACL_MGMT_VTY in", "end",
+                        "configure terminal", vty_header, "no access-class ACL_MGMT_VTY in", "end",
                     ],
+                ),
+            ))
+
+        # 5. ACLs Huérfanas declaradas y no aplicadas a ninguna interfaz
+        for orphan in topology.acls_huerfanas:
+            impl_o = (["configure terminal", f"no ip access-list extended {orphan}", "end"]
+                      if not is_asa else ["configure terminal", f"clear configure access-list {orphan}", "end"])
+            findings.append(HallazgoFirewall(
+                id_hallazgo=next_id(),
+                acl_o_componente=orphan,
+                linea_o_regla_afectada=f"ip access-list extended {orphan}",
+                severidad=SeveridadEnum.BAJA,
+                categoria_problema="Higiene / ACL Huérfana sin Interfaz Asignada",
+                confirmado_por_batfish=False,
+                desglose_visual=[DesgloseReglaVisual(
+                    rol="ACL Huérfana", secuencia="-", accion="PERMIT", protocolo="ip",
+                    origen="any", destino="legacy", puerto="-", estado_flujo="Declarada en configuración pero no aplicada",
+                )],
+                punto_critico_error=f"La lista de acceso '{orphan}' está definida en memoria pero no se aplica a ninguna interfaz ni línea VTY.",
+                controles_normativos=[
+                    "CIS-IOS-3.1.4 - Higiene de Políticas: Exige eliminar listas de acceso obsoletas o no vinculadas.",
+                ],
+                diagnostico_tecnico=f"Deuda técnica: {orphan} ensucia la configuración y podría aplicarse por error en el futuro.",
+                como_mejora_la_red="Simplifica la configuración activa y evita errores humanos en mantenimiento.",
+                nivel_impacto_operativo=NivelImpactoEnum.NULO,
+                analisis_blast_radius="Impacto operativo nulo: ninguna interfaz referencia esta ACL.",
+                plan_a_recomendado=OpcionDecision(
+                    nombre_plan="Plan A (Eliminación de ACL Huérfana)",
+                    descripcion_accion=f"Remover el bloque {orphan} de la configuración.",
+                    efecto_en_red="Limpia la configuración sin alterar el filtrado activo.",
+                    comandos_cli_implementacion=impl_o,
+                    comandos_cli_rollback=["configure terminal", f"ip access-list extended {orphan}", "end"],
+                ),
+                plan_b_conservador=OpcionDecision(
+                    nombre_plan="Plan B (Depuración en Ventana Programada)",
+                    descripcion_accion=f"Eliminar {orphan} tras respaldar running-config.",
+                    efecto_en_red="Elimina configuración residual sin impacto.",
+                    comandos_cli_implementacion=impl_o,
+                    comandos_cli_rollback=["configure terminal", f"ip access-list extended {orphan}", "end"],
                 ),
             ))
 
@@ -437,6 +583,10 @@ class DeterministicFirewallAdvisor:
 
         # Caso 1: Salida de zona segura a menos segura (LAN -> WAN) donde el usuario pide mantener destino 'any'
         if "LAN" in finding.sentido_flujo_zonas.upper() or any(w in just_low for w in ("salida", "internet", "naveg", "lan", "segura", "any")):
+            seq_m = re.match(r"^\s*(\d+)\s+", finding.linea_o_regla_afectada or "")
+            seq_num = seq_m.group(1) if seq_m else "20"
+            mgmt_subnet = next((z["subred"] for z in zones if z["zona"] == "GESTION"), None)
+            mgmt_ip = mgmt_subnet.split("/")[0] if mgmt_subnet else None
             if is_asa:
                 cmds = [
                     "configure terminal",
@@ -451,7 +601,8 @@ class DeterministicFirewallAdvisor:
                 cmds = [
                     "configure terminal",
                     f"ip access-list extended {acl}",
-                    "no 20",
+                    f"no {seq_num}",
+                    *([f"12 deny ip any {mgmt_ip} 0.0.0.255 log"] if mgmt_ip else []),
                     f"15 deny tcp any {dmz_ip} 0.0.0.255 eq 22 log",
                     "18 deny tcp any any eq 445 log",
                     f"20 permit tcp {lan_ip} 0.0.0.255 any eq 80",

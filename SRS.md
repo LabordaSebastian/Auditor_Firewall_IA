@@ -426,3 +426,15 @@ cisco-ai-firewall-auditor/
   4. **Visor del reporte renderizado en el cliente** a partir del resumen de sesión ya cargado (sin endpoint nuevo ni exposición de datos adicionales); la lógica de tabla de colisión se comparte con las fichas de hallazgos.
   5. **Prueba estructural** (`tests/test_tabs_ui.py`) que verifica que todo `$('id')` del JS exista y que cada herramienta viva en su panel, para evitar regresiones al mover secciones.
 * **Impacto:** Menor carga visual, lectura del informe sin salir de la aplicación y base para el pulido del PDF (RF-13.3).
+
+### ADR-009 (2026-11-22): Correcciones del Laboratorio Packet Tracer — Plan C en What-If, IPs Reales en el Simulador y Verificación del Tráfico de Retorno `[RF-11 · RF-12 · RF-15]`
+* **Estado:** Aprobado e Implementado.
+* **Contexto:** Las primeras pruebas espejo App ↔ Packet Tracer revelaron tres defectos: (1) el Centro de Decisiones rechazaba con HTTP 422 la decisión `C` (Plan C) porque `WhatIfRequest` solo admitía `A/B/NONE`; (2) el simulador mostraba direcciones de red sanitizadas (`192.0.2.8/29`) que no estaban en el mapa de IPs (solo contenía hosts), confundiendo al operador; (3) una navegación LAN ➔ Internet pasaba en la app (`PERMIT`) pero fallaba en Packet Tracer: la ACL de entrada WAN, **sin estado**, descartaba la respuesta TCP (el `ping` sí funcionaba por `permit icmp any any`).
+* **Decisión Técnica:**
+  1. **Plan C en What-If:** el validador REST acepta `A/B/C/NONE`; `normalize_decisions`, `projected_score` (Plan C = 85 % de la ganancia del Plan A), `commands_by_finding` y `build_scripts` usan el Plan C generado por el consultor (guardado por sesión); la UI lo selecciona automáticamente.
+  2. **IPs reales en simulador y visores:** se derivan `net_mappings` (dirección de red sintética ➔ real) a partir de las IPs de interfaz y se aplican en `desanitize`/`_resanitize`. Es solo de visualización local: el simulador no envía datos a Gemini, por lo que mostrar IPs originales no compromete RNF de privacidad.
+  3. **Tráfico de retorno (`bf.q.bidirectionalTraceroute`):** `simulate_packet` agrega el campo `retorno`; la UI advierte «la ida pasa pero la respuesta se descarta» y sugiere reglas `established`.
+  4. **Exposición solo con SYN:** `scan_exposed_ports` restringe `searchFilters` a TCP SYN sin ACK, evitando falsos positivos por reglas de retorno `established` (que no permiten iniciar conexiones).
+  5. **Laboratorio:** `ACL_WAN_IN` incorpora `75 permit tcp any any established` para permitir las respuestas de la navegación saliente.
+* **Impacto:** Mayor fidelidad entre simulador y red real (detecta ACLs sin estado), consistencia de IPs para el operador y flujo What-If completo con Plan C.
+

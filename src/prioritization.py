@@ -7,9 +7,9 @@ Es una capa de *decisión*; la verificación formal del efecto en la red sigue d
 """
 from typing import Dict, List, Optional, Tuple
 
-from src.models import HallazgoFirewall, NivelImpactoEnum, ReporteAuditoriaFirewall, SeveridadEnum
+from src.models import HallazgoFirewall, NivelImpactoEnum, OpcionDecision, ReporteAuditoriaFirewall, SeveridadEnum
 
-DECISIONS = ("A", "B", "NONE")
+DECISIONS = ("A", "B", "C", "NONE")
 
 # Orden top-down: la severidad manda; a igual severidad se aplica primero lo menos riesgoso.
 SEVERITY_RANK: Dict[SeveridadEnum, int] = {
@@ -25,8 +25,9 @@ IMPACT_RANK: Dict[NivelImpactoEnum, int] = {
 IMPACT_LABEL: Dict[NivelImpactoEnum, str] = {
     NivelImpactoEnum.NULO: "NULO", NivelImpactoEnum.BAJO: "BAJO", NivelImpactoEnum.MEDIO: "MEDIO", NivelImpactoEnum.ALTO: "ALTO",
 }
-# El Plan B (transición con monitoreo) mitiga pero no cierra del todo el riesgo.
+# El Plan B (transición con monitoreo) mitiga pero no cierra del todo el riesgo; Plan C aplica controles compensatorios.
 PLAN_B_FACTOR = 0.6
+PLAN_C_FACTOR = 0.85
 QUICK_WIN_MAX_IMPACT = 1  # NULO o BAJO
 
 
@@ -95,13 +96,13 @@ def normalize_decisions(report: ReporteAuditoriaFirewall, decisions: Dict[str, s
     for fid in known:
         value = str(decisions.get(fid, "NONE")).upper()
         if value not in DECISIONS:
-            raise ValueError(f"Decisión inválida para {fid}: '{decisions.get(fid)}'. Usa A, B o NONE.")
+            raise ValueError(f"Decisión inválida para {fid}: '{decisions.get(fid)}'. Usa A, B, C o NONE.")
         clean[fid] = value
     return clean
 
 
 def projected_score(report: ReporteAuditoriaFirewall, decisions: Dict[str, str]) -> Dict:
-    """Postura estimada tras aplicar las decisiones (Plan A = ganancia completa, Plan B = parcial)."""
+    """Postura estimada tras aplicar las decisiones (Plan A = ganancia completa, Plan C = 85%, Plan B = 60%)."""
     gains = _gains(report)
     actual = report.resumen.score_seguridad_actual
     delta = 0.0
@@ -110,9 +111,11 @@ def projected_score(report: ReporteAuditoriaFirewall, decisions: Dict[str, str])
         d = decisions.get(h.id_hallazgo, "NONE")
         if d == "A":
             delta += gains[h.id_hallazgo]
+        elif d == "C":
+            delta += gains[h.id_hallazgo] * PLAN_C_FACTOR
         elif d == "B":
             delta += gains[h.id_hallazgo] * PLAN_B_FACTOR
-        if d != "A":
+        if d not in {"A", "C"}:
             residuales.append(h.id_hallazgo)
     score = max(0, min(100, round(actual + delta)))
     return {
@@ -125,15 +128,25 @@ def projected_score(report: ReporteAuditoriaFirewall, decisions: Dict[str, str])
     }
 
 
-def selected_plan(h: HallazgoFirewall, decision: str):
-    return h.plan_a_recomendado if decision == "A" else h.plan_b_conservador if decision == "B" else None
+def selected_plan(h: HallazgoFirewall, decision: str, plan_c_map: Optional[Dict[str, OpcionDecision]] = None):
+    if decision == "A":
+        return h.plan_a_recomendado
+    if decision == "B":
+        return h.plan_b_conservador
+    if decision == "C":
+        return (plan_c_map or {}).get(h.id_hallazgo) or h.plan_b_conservador
+    return None
 
 
-def commands_by_finding(report: ReporteAuditoriaFirewall, decisions: Dict[str, str]) -> List[Tuple[str, List[str]]]:
-    """[(id, comandos_implementación)] de los hallazgos con decisión A/B, en orden top-down."""
+def commands_by_finding(
+    report: ReporteAuditoriaFirewall,
+    decisions: Dict[str, str],
+    plan_c_map: Optional[Dict[str, OpcionDecision]] = None,
+) -> List[Tuple[str, List[str]]]:
+    """[(id, comandos_implementación)] de los hallazgos con decisión A/B/C, en orden top-down."""
     out: List[Tuple[str, List[str]]] = []
     for h in ordered_findings(report):
-        plan = selected_plan(h, decisions.get(h.id_hallazgo, "NONE"))
+        plan = selected_plan(h, decisions.get(h.id_hallazgo, "NONE"), plan_c_map)
         if plan:
             out.append((h.id_hallazgo, list(plan.comandos_cli_implementacion)))
     return out
@@ -146,18 +159,22 @@ def _body(cmds: List[str]) -> List[str]:
     return [c for c in cmds if c.strip().lower() not in _WRAPPERS]
 
 
-def build_scripts(report: ReporteAuditoriaFirewall, decisions: Dict[str, str]) -> Dict[str, Optional[str]]:
+def build_scripts(
+    report: ReporteAuditoriaFirewall,
+    decisions: Dict[str, str],
+    plan_c_map: Optional[Dict[str, OpcionDecision]] = None,
+) -> Dict[str, Optional[str]]:
     """
     Scripts consolidados de las decisiones: remediación en orden top-down y rollback en orden
     inverso (el último cambio aplicado es el primero en revertirse).
     """
     chosen = [(h, decisions.get(h.id_hallazgo, "NONE")) for h in ordered_findings(report)]
-    chosen = [(h, d) for h, d in chosen if d in {"A", "B"}]
+    chosen = [(h, d) for h, d in chosen if d in {"A", "B", "C"}]
     if not chosen:
         return {"remediacion": None, "rollback": None}
 
     def section(h: HallazgoFirewall, d: str, rollback: bool) -> List[str]:
-        plan = selected_plan(h, d)
+        plan = selected_plan(h, d, plan_c_map)
         cmds = plan.comandos_cli_rollback if rollback else plan.comandos_cli_implementacion
         return [f"! --- {h.id_hallazgo} · Plan {d} · {h.acl_o_componente} ({h.severidad.value}) ---", "configure terminal",
                 *_body(cmds), "end", ""]

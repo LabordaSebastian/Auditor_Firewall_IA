@@ -65,10 +65,34 @@ class AuditService:
         return json.loads(ConfigSanitizer.desanitize(json.dumps(data, ensure_ascii=False), lookup_map))
 
     @staticmethod
+    def _add_network_mappings(topology: ContextoTopologia, lookup_map: Dict[str, Any]) -> None:
+        """
+        Deriva el mapeo de direcciones de RED (p. ej. 192.0.2.8 -> 200.45.112.16) a partir de las IPs de
+        interfaz enmascaradas, para que las subredes que Batfish/UI muestran (`192.0.2.8/29`) se
+        presenten con su valor real en simulador, zonas y grafo. Es solo de visualización local.
+        """
+        ip_map = lookup_map.get("ip_mappings", {})
+        nets: Dict[str, str] = {}
+        for iface in topology.interfaces.values():
+            real = ip_map.get(iface.ip_address or "")
+            if not real or not iface.mascara:
+                continue
+            try:
+                s_net = ipaddress.ip_network(f"{iface.ip_address}/{iface.mascara}", strict=False).network_address
+                r_net = ipaddress.ip_network(f"{real}/{iface.mascara}", strict=False).network_address
+            except ValueError:
+                continue
+            if str(s_net) not in ip_map:
+                nets[str(s_net)] = str(r_net)
+        lookup_map["net_mappings"] = nets
+
+    @staticmethod
     def _resanitize(text: str, lookup_map: Dict[str, Any]) -> str:
         """real -> sintético (inverso de desanitize) para entradas del usuario y comandos CLI."""
         result = text
         for synth, real in lookup_map.get("ip_mappings", {}).items():
+            result = re.sub(r"\b" + re.escape(real) + r"\b", synth, result)
+        for synth, real in lookup_map.get("net_mappings", {}).items():
             result = re.sub(r"\b" + re.escape(real) + r"\b", synth, result)
         for token, secret in lookup_map.get("secret_mappings", {}).items():
             result = result.replace(secret, token)
@@ -181,6 +205,7 @@ class AuditService:
             sanitized, lookup_map = normalized, {"metadata": {}, "ip_mappings": {}, "secret_mappings": {}}
 
         topology = CiscoTopologyExtractor(sanitized).extract_topology()
+        self._add_network_mappings(topology, lookup_map)
 
         with self._bf_lock:
             math_findings = self._analyzer().analyze_snapshot(sanitized, config_filename=filename)
@@ -291,6 +316,7 @@ class AuditService:
             raise ValueError(f"Hallazgo desconocido: {id_hallazgo}")
         just_san = self._resanitize(justificacion.strip(), s.lookup_map)
         dictamen = GeminiFirewallAdvisor().consult_exception(finding, s.topology, just_san)
+        s.cache.setdefault("plan_c", {})[id_hallazgo] = dictamen.plan_c_adaptado
         payload = dictamen.model_dump(mode="json")
         return self._deep_desanitize(payload, s.lookup_map)
 
@@ -505,9 +531,10 @@ class AuditService:
         if not s.report:
             raise ValueError("No hay hallazgos con planes de remediación para evaluar.")
         decisions = normalize_decisions(s.report, decisiones)
-        seleccion = commands_by_finding(s.report, decisions)
+        plan_c_map = s.cache.get("plan_c", {})
+        seleccion = commands_by_finding(s.report, decisions, plan_c_map)
         postura = projected_score(s.report, decisions)
-        scripts = build_scripts(s.report, decisions)
+        scripts = build_scripts(s.report, decisions, plan_c_map)
         base: Dict[str, Any] = {
             "decisiones": decisions, "postura": postura, "scripts": scripts,
             "aplicados": [fid for fid, _ in seleccion],

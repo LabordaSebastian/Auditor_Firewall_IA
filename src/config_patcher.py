@@ -79,11 +79,15 @@ def apply_commands(config_text: str, commands: List[str]) -> str:
         body = cmd[3:].strip() if negate else cmd
 
         if negate:
-            seq_m = re.fullmatch(r"\d+", body)
-            if seq_m:
-                children[:] = [c for c in children if _seq_of(c) != int(body)]
+            seq_m = re.match(r"^(\d+)\b", body)
+            if seq_m and header.lower().startswith("ip access-list"):
+                children[:] = [c for c in children if _seq_of(c) != int(seq_m.group(1))]
             else:
-                children[:] = [c for c in children if c.strip().lower() != body.lower()]
+                children[:] = [
+                    c for c in children
+                    if c.strip().lower() != body.lower()
+                    and re.sub(r"^\d+\s+", "", c.strip()).lower() != body.lower()
+                ]
             continue
 
         seq_m = _SEQ_RE.match(body)

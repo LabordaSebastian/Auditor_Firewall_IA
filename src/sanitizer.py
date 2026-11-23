@@ -126,6 +126,10 @@ class ConfigSanitizer:
         for synth_ip, real_ip in ip_mappings.items():
             result = re.sub(r"\b" + re.escape(synth_ip) + r"\b", real_ip, result)
 
+        # Restaurar direcciones de red derivadas (p. ej. '192.0.2.8/29' -> '200.45.112.16/29')
+        for synth_net, real_net in lookup_map.get("net_mappings", {}).items():
+            result = re.sub(r"\b" + re.escape(synth_net) + r"\b", real_net, result)
+
         return result
 
     @staticmethod

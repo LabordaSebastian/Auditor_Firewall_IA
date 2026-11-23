@@ -72,11 +72,12 @@ def test_plan_b_gains_less_than_plan_a_and_partial_selection_is_monotonic(report
 
 def test_normalize_decisions_validates(report):
     assert normalize_decisions(report, {"F-BAJA": "a"})["F-BAJA"] == "A"
+    assert normalize_decisions(report, {"F-BAJA": "c"})["F-BAJA"] == "C"
     assert normalize_decisions(report, {})["F-ALTA"] == "NONE"
     with pytest.raises(ValueError, match="desconocido"):
         normalize_decisions(report, {"FW-XXX": "A"})
     with pytest.raises(ValueError, match="inválida"):
-        normalize_decisions(report, {"F-BAJA": "C"})
+        normalize_decisions(report, {"F-BAJA": "X"})
 
 
 # ------------------------------------------------------------------ scripts consolidados

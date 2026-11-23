@@ -53,7 +53,7 @@ class ExceptionConsultRequest(BaseModel):
 
 
 class WhatIfRequest(BaseModel):
-    """Centro de decisiones (RF-12): decisión por hallazgo: 'A', 'B' o 'NONE' (omitir)."""
+    """Centro de decisiones (RF-12): decisión por hallazgo: 'A', 'B', 'C' (Plan C del consultor) o 'NONE' (omitir)."""
     decisiones: Dict[str, str] = Field(default_factory=dict, max_length=200)
     evaluar_aislamiento: bool = True
 
@@ -61,8 +61,8 @@ class WhatIfRequest(BaseModel):
     @classmethod
     def _valid_decisions(cls, value: Dict[str, str]) -> Dict[str, str]:
         for fid, d in value.items():
-            if len(fid) > 80 or str(d).upper() not in {"A", "B", "NONE"}:
-                raise ValueError(f"Decisión inválida para '{fid[:80]}': use A, B o NONE.")
+            if len(fid) > 80 or str(d).upper() not in {"A", "B", "C", "NONE"}:
+                raise ValueError(f"Decisión inválida para '{fid[:80]}': use A, B, C o NONE.")
         return value
 
 
