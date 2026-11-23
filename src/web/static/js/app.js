@@ -1071,6 +1071,17 @@ function saveText(text, name) {
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
+async function copyCliText(text, btn, label) {
+  if (!text) { toast('No hay comandos generados para copiar.', 'warn'); return; }
+  await navigator.clipboard.writeText(text);
+  if (btn) {
+    const prev = btn.textContent;
+    btn.textContent = '✅ ¡Copiado!';
+    setTimeout(() => { btn.textContent = prev; }, 1600);
+  }
+  toast(`${label} copiado al portapapeles (listo para pegar en la CLI).`, 'ok');
+}
+
 async function runWhatIf() {
   if (WI.busy) return;
   const out = $('wiOut');
@@ -1101,13 +1112,29 @@ async function runWhatIf() {
       ${d.aplicados.length ? `<p class="block-label">Flujos que cambian de comportamiento (compareFilters)</p>${flows}${isoHtml}
       <p class="block-label">Configuración candidata (diff sintáctico)</p><div class="codebox">${cfg || '<span class="ctx">Sin cambios</span>'}</div>
       <div class="btn-row" style="margin-top:14px">
-        <button class="btn" id="wiDlRem">🛠️ Descargar remediación consolidada (.cli)</button>
-        <button class="btn" id="wiDlRoll">⏪ Descargar rollback consolidado (.cli)</button>
+        <button class="btn primary" id="wiCopyRem">📋 Copiar remediación (CLI)</button>
+        <button class="btn" id="wiDlRem">🛠️ Descargar remediación (.cli)</button>
+        <button class="btn" id="wiCopyRoll">📋 Copiar rollback (CLI)</button>
+        <button class="btn" id="wiDlRoll">⏪ Descargar rollback (.cli)</button>
       </div>
+      <div class="tabs" id="wiScriptTabs" style="margin-top:14px">
+        <button class="tab on" type="button" data-ws="rem">🛠️ Vista previa Remediación (CLI)</button>
+        <button class="tab" type="button" data-ws="roll">⏪ Vista previa Rollback (CLI)</button>
+      </div>
+      <div id="wiScriptRem">${codeBox((d.scripts.remediacion || '').split('\n'), false, 'Script consolidado de remediación — listo para pegar en modo enable#')}</div>
+      <div id="wiScriptRoll" style="display:none">${codeBox((d.scripts.rollback || '').split('\n'), false, 'Script consolidado de rollback — listo para pegar en modo enable#')}</div>
       <p class="meta" style="margin-top:8px">La postura es una <b>estimación</b> (el Plan B aporta ${Math.round(0.6 * 100)}% de la mejora del Plan A); el efecto sobre los flujos sí es verificación formal de Batfish.</p>` : ''}`;
     if (d.aplicados.length) {
+      $('wiCopyRem').addEventListener('click', () => copyCliText(d.scripts.remediacion, $('wiCopyRem'), 'Script de remediación'));
+      $('wiCopyRoll').addEventListener('click', () => copyCliText(d.scripts.rollback, $('wiCopyRoll'), 'Script de rollback'));
       $('wiDlRem').addEventListener('click', () => saveText(d.scripts.remediacion, `remediacion_whatif_${S.archivo.replace(/\.[^.]+$/, '')}.cli`));
       $('wiDlRoll').addEventListener('click', () => saveText(d.scripts.rollback, `rollback_whatif_${S.archivo.replace(/\.[^.]+$/, '')}.cli`));
+      $('wiScriptTabs').querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+        $('wiScriptTabs').querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === t));
+        $('wiScriptRem').style.display = t.dataset.ws === 'rem' ? '' : 'none';
+        $('wiScriptRoll').style.display = t.dataset.ws === 'roll' ? '' : 'none';
+      }));
+      out.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copyCliText(cmdStore[+b.dataset.copy], b, 'Script CLI')));
     }
   } catch (e) {
     out.innerHTML = `<div class="alert err">❌ ${esc(e.message)}</div>`;
@@ -1463,5 +1490,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btnPdf').addEventListener('click', () => download(`/api/session/${S.id}/pdf`, 'auditoria.pdf'));
   $('btnMd').addEventListener('click', () => download(`/api/session/${S.id}/markdown`, 'auditoria.md'));
   $('btnRem').addEventListener('click', () => download(`/api/session/${S.id}/cli/remediacion`, 'remediacion.cli'));
+  $('btnCopyRem').addEventListener('click', async () => {
+    const r = await fetch(`/api/session/${S.id}/cli/remediacion`);
+    if (!r.ok) { toast('No se pudo obtener el script de remediación.', 'err'); return; }
+    await copyCliText(await r.text(), $('btnCopyRem'), 'Script de remediación');
+  });
   $('btnRoll').addEventListener('click', () => download(`/api/session/${S.id}/cli/rollback`, 'rollback.cli'));
+  $('btnCopyRoll').addEventListener('click', async () => {
+    const r = await fetch(`/api/session/${S.id}/cli/rollback`);
+    if (!r.ok) { toast('No se pudo obtener el script de rollback.', 'err'); return; }
+    await copyCliText(await r.text(), $('btnCopyRoll'), 'Script de rollback');
+  });
 });

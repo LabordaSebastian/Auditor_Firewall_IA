@@ -69,7 +69,7 @@ def test_each_tool_lives_in_the_expected_panel(dom, element, panel):
 
 
 def test_hero_and_downloads_stay_outside_tabs(dom):
-    for el in ("hostName", "gaugeNow", "gaugeProj", "btnPdf", "btnMd", "btnRem", "btnRoll", "btnSanView"):
+    for el in ("hostName", "gaugeNow", "gaugeProj", "btnPdf", "btnMd", "btnRem", "btnCopyRem", "btnRoll", "btnCopyRoll", "btnSanView"):
         assert not any(p.startswith("panel-") for p in dom.parents.get(el, [])), el
 
 
@@ -87,7 +87,7 @@ def test_tabs_module_and_report_viewer_present():
     for token in (
         "const Tabs", "show(name", "reset()", "function renderReport", "function repFinding",
         "Topo.activate", "pendingLoad", "codebox has-bar", "codebox-bar", "rep-hero-banner",
-        "paper-mode", "rep-evidence", "risk-cell",
+        "paper-mode", "rep-evidence", "risk-cell", "copyCliText", "wiCopyRem", "wiCopyRoll",
     ):
         assert token in JS, token
     assert "TAB_IDS = ['postura', 'whatif', 'topologia', 'herramientas', 'reporte']" in JS
