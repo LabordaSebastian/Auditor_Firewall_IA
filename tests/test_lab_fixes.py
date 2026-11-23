@@ -73,3 +73,34 @@ def test_exposure_ignores_established_return_rules():
     cfg = LAB_CFG.replace(" 20 permit icmp any any", " 15 permit tcp any any established\n 20 permit icmp any any")
     ports = {(e["servicio"], e["puerto"]) for e in bf.scan_exposed_ports(cfg, "lab.cfg", ["ACL_WAN_IN"], network_name="test_net_ret")}
     assert ports == set()  # ni SSH/RDP/etc.: una regla 'established' no permite iniciar conexiones
+
+
+def test_ios_remediation_without_sequence_numbers_enters_acl_context():
+    """En IOS 'show running-config' no trae números de secuencia; los comandos deben entrar a 'ip access-list extended'."""
+    from src.deterministic_advisor import DeterministicFirewallAdvisor
+    from src.models import HallazgoMatematico
+    from src.topology_extractor import CiscoTopologyExtractor
+
+    unseq_cfg = """hostname R-PT
+interface GigabitEthernet0/0
+ description WAN
+ ip address 200.45.112.18 255.255.255.248
+ ip access-group ACL_WAN_IN in
+ip access-list extended ACL_WAN_IN
+ permit tcp any 172.16.10.0 0.0.0.255 eq 443
+ deny tcp any host 172.16.10.50 eq 443
+ permit tcp any host 200.45.112.18 eq telnet
+"""
+    topo = CiscoTopologyExtractor(unseq_cfg).extract_topology()
+    math = [HallazgoMatematico(
+        tipo="CRITICAL_SHADOWING", filtro_nombre="ACL_WAN_IN",
+        linea_afectada="deny tcp any host 172.16.10.50 eq 443", indice_linea=1,
+        linea_bloqueadora="permit tcp any 172.16.10.0 0.0.0.255 eq 443", indice_bloqueadora=0,
+        descripcion="Shadowing",
+    )]
+    rep = DeterministicFirewallAdvisor().analyze(unseq_cfg, topo, math)
+    for h in rep.hallazgos:
+        if h.acl_o_componente == "ACL_WAN_IN":
+            cmds = h.plan_a_recomendado.comandos_cli_implementacion
+            assert cmds[0] == "configure terminal"
+            assert cmds[1] == "ip access-list extended ACL_WAN_IN"

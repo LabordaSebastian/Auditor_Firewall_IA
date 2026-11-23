@@ -174,17 +174,26 @@ class DeterministicFirewallAdvisor:
             impact = NivelImpactoEnum.MEDIO if is_crit else NivelImpactoEnum.NULO
             seq_m = re.match(r"^\s*(\d+)\s+(.*)", mf.linea_afectada)
             b_seq_m = re.match(r"^\s*(\d+)\s+(.*)", mf.linea_bloqueadora or "")
-            if not is_asa and seq_m and b_seq_m and is_crit:
-                s_hi, r_hi = seq_m.group(1), seq_m.group(2)
-                s_lo, r_lo = b_seq_m.group(1), b_seq_m.group(2)
-                impl_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
-                          f"no {s_lo}", f"no {s_hi}", f"{s_lo} {r_hi}", f"{s_hi} {r_lo}", "end"]
-                roll_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
-                          f"no {s_lo}", f"no {s_hi}", f"{s_lo} {r_lo}", f"{s_hi} {r_hi}", "end"]
-            elif not is_asa and seq_m:
-                s_hi, r_hi = seq_m.group(1), seq_m.group(2)
-                impl_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}", f"no {s_hi}", "end"]
-                roll_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}", f"{s_hi} {r_hi}", "end"]
+            if not is_asa:
+                r_hi = seq_m.group(2) if seq_m else mf.linea_afectada.strip()
+                r_lo = b_seq_m.group(2) if b_seq_m else (mf.linea_bloqueadora or "").strip()
+                if is_crit and mf.linea_bloqueadora:
+                    if seq_m and b_seq_m:
+                        s_hi, s_lo = seq_m.group(1), b_seq_m.group(1)
+                        impl_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
+                                  f"no {s_lo}", f"no {s_hi}", f"{s_lo} {r_hi}", f"{s_hi} {r_lo}", "end"]
+                        roll_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
+                                  f"no {s_lo}", f"no {s_hi}", f"{s_lo} {r_lo}", f"{s_hi} {r_hi}", "end"]
+                    else:
+                        impl_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
+                                  f"no {r_lo}", f"no {r_hi}", r_hi, r_lo, "end"]
+                        roll_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}",
+                                  f"no {r_hi}", f"no {r_lo}", r_lo, r_hi, "end"]
+                else:
+                    target_del = seq_m.group(1) if seq_m else r_hi
+                    target_add = f"{seq_m.group(1)} {r_hi}" if seq_m else r_hi
+                    impl_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}", f"no {target_del}", "end"]
+                    roll_a = ["configure terminal", f"ip access-list extended {mf.filtro_nombre}", target_add, "end"]
             else:
                 impl_a = ["configure terminal", f"no {mf.linea_afectada.strip()}", "end"]
                 roll_a = ["configure terminal", mf.linea_afectada.strip(), "end"]
@@ -294,8 +303,8 @@ class DeterministicFirewallAdvisor:
             m_telnet = re.match(r"^(?:(\d+)\s+)?permit\s+tcp\s+any\s+.*\beq\s+(?:23|telnet)\b", s_l, re.IGNORECASE)
             if m_telnet:
                 t_seq = m_telnet.group(1)
-                impl_t = (["configure terminal", f"ip access-list extended {wan_acl}", f"no {t_seq}", "end"]
-                          if not is_asa and t_seq else ["configure terminal", f"no {s_l}", "end"])
+                impl_t = (["configure terminal", f"ip access-list extended {wan_acl}", f"no {t_seq or s_l}", "end"]
+                          if not is_asa else ["configure terminal", f"no {s_l}", "end"])
                 roll_t = (["configure terminal", f"ip access-list extended {wan_acl}", s_l, "end"]
                           if not is_asa else ["configure terminal", s_l, "end"])
                 findings.append(HallazgoFirewall(
