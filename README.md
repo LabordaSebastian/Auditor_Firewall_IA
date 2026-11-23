@@ -144,6 +144,7 @@ Por cada auditoría ejecutada, el sistema genera automáticamente:
 ## 📚 Documentación Técnica Adicional
 
 * **[Manual Práctico y Referencia Formal de Batfish](docs/manual_practico_batfish.md):** Guía completa paso a paso, tabla de consultas (`routes`, `traceroute`, `reachability`, `filterLineReachability`) y laboratorio interactivo para dominar la verificación formal de redes.
+* **[Validación con Laboratorio en Cisco Packet Tracer](validacion_laboratorio_packet_tracer/README.md):** Topología empresarial (VLANs, DMZ, WAN), guía paso a paso, pruebas espejo App ↔ simulador y script reproducible (`python validacion_laboratorio_packet_tracer/ejecutar_validacion.py`) que verifica 31 pruebas (postura 15 → 95/100).
 
 ---
 
