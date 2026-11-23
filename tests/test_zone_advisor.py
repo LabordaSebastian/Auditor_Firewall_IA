@@ -99,3 +99,35 @@ def test_consult_exception_endpoint_generates_plan_c_and_desanitizes(client, sam
     # Validación de errores
     assert client.post("/api/session/exc1/advisor/exception", json={"id_hallazgo": "NOPE", "justificacion": "salida internet"}).status_code == 400
     assert client.post("/api/session/exc1/advisor/exception", json={"id_hallazgo": "FW-001", "justificacion": "a"}).status_code == 422
+
+
+def test_gemini_fallback_rotates_on_503_and_formats_friendly_error(sample_report, monkeypatch):
+    """Ante 503 UNAVAILABLE en el modelo primario, rota a modelos alternativos; si todos fallan, el mensaje es claro."""
+    from types import SimpleNamespace
+    from src.gemini_advisor import GeminiFirewallAdvisor
+
+    calls = []
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            calls.append(model)
+            if len(calls) == 1:
+                raise RuntimeError("503 UNAVAILABLE. This model is currently experiencing high demand.")
+            return SimpleNamespace(text=sample_report.model_dump_json())
+
+    monkeypatch.setattr("src.gemini_advisor.time.sleep", lambda _s: None)
+    adv = GeminiFirewallAdvisor(api_key="fake-key", model_name="gemini-3.5-flash-lite")
+    adv.client = SimpleNamespace(models=FakeModels())
+    topo = CiscoTopologyExtractor(IOS_CONFIG).extract_topology()
+    rep = adv.analyze(IOS_CONFIG, topo, [])
+    assert len(calls) == 2 and calls[0] == "gemini-3.5-flash-lite" and calls[1] != calls[0]
+    assert rep.resumen.hostname_detectado == sample_report.resumen.hostname_detectado
+
+    # Si todos los modelos devuelven 503, el servicio degrada al motor determinístico con mensaje amigable
+    monkeypatch.setattr(GeminiFirewallAdvisor, "analyze",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("503 UNAVAILABLE")))
+    monkeypatch.setattr("src.web.service.GEMINI_API_KEY", "fake-key")
+    _, source, err = service._build_report(IOS_CONFIG, topo, [], {"ip_mappings": {}, "secret_mappings": {}},
+                                          "no_cache_503_test", use_ai=True, prefer_cache=False)
+    assert source == "deterministico"
+    assert "HTTP 503" in err and "RuntimeError" not in err

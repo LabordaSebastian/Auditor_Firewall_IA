@@ -266,7 +266,13 @@ class AuditService:
             return enrich_report_zone_context(report, topology), "gemini", None
         except Exception as exc:  # fallo de red/cuota: degradar a caché o motor determinístico
             cached = from_cache()
-            err = f"{type(exc).__name__}: {str(exc)[:200]}"
+            raw_err = str(exc)
+            if "503" in raw_err or "UNAVAILABLE" in raw_err:
+                err = "Gemini está con alta demanda temporal en la nube (HTTP 503); se usó el respaldo local."
+            elif "429" in raw_err or "RESOURCE_EXHAUSTED" in raw_err:
+                err = "Cuota temporal de Gemini alcanzada (HTTP 429); se usó el respaldo local."
+            else:
+                err = f"{type(exc).__name__}: {raw_err[:180]}"
             return (cached, "cache", err) if cached else (from_deterministic(), "deterministico", err)
 
     # ------------------------------------------------------------------ payloads

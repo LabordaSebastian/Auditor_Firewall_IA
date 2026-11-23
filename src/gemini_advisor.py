@@ -1,8 +1,10 @@
 import json
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Type, TypeVar
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 from src.config import GEMINI_API_KEY, GEMINI_MODEL, SKILLS_DIR
 from src.deterministic_advisor import DeterministicFirewallAdvisor, enrich_report_zone_context
@@ -13,6 +15,18 @@ from src.models import (
     HallazgoMatematico,
     ReporteAuditoriaFirewall,
 )
+
+TModel = TypeVar("TModel", bound=BaseModel)
+_FALLBACK_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+)
+_REQUEST_TIMEOUT_MS = 25_000
 
 
 class GeminiFirewallAdvisor:
@@ -85,43 +99,60 @@ class GeminiFirewallAdvisor:
             "- Devuelve ÚNICAMENTE la estructura JSON que valida exactamente contra el esquema requerido."
         )
 
-        import time
+        return self._generate_structured(
+            prompt=user_prompt,
+            schema=ReporteAuditoriaFirewall,
+            system_instruction=system_instruction,
+            topology=topology,
+        )
 
+    def _models_sequence(self) -> List[str]:
         models_to_try = [self.model_name]
-        for fallback_m in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
+        for fallback_m in _FALLBACK_MODELS:
             if fallback_m not in models_to_try:
                 models_to_try.append(fallback_m)
+        return models_to_try
 
-        last_error = None
-        for candidate_model in models_to_try:
-            for attempt in range(2):
-                try:
-                    response = self.client.models.generate_content(
-                        model=candidate_model,
-                        contents=user_prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            temperature=0.1,
-                            response_mime_type="application/json",
-                            response_schema=ReporteAuditoriaFirewall,
-                        ),
-                    )
-                    if response and response.text:
-                        raw_text = response.text.strip()
-                        if raw_text.startswith("```json"):
-                            raw_text = raw_text[7:]
-                        if raw_text.startswith("```"):
-                            raw_text = raw_text[3:]
-                        if raw_text.endswith("```"):
-                            raw_text = raw_text[:-3]
-                        rep = ReporteAuditoriaFirewall.model_validate_json(raw_text.strip())
-                        return enrich_report_zone_context(rep, topology)
-                except Exception as e:
-                    last_error = e
-                    # Pausa breve si es error 503 o 429 por pico de tráfico
-                    if "503" in str(e) or "429" in str(e) or "UNAVAILABLE" in str(e):
-                        time.sleep(2)
-                    continue
+    def _generate_structured(
+        self,
+        prompt: str,
+        schema: Type[TModel],
+        system_instruction: Optional[str] = None,
+        topology: Optional[ContextoTopologia] = None,
+    ) -> TModel:
+        """Invoca Gemini con timeout acotado y rotación automática entre modelos ante errores 503/429."""
+        models_to_try = self._models_sequence()
+        last_error: Optional[Exception] = None
+        cfg_kwargs = {
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+            "response_schema": schema,
+            "http_options": types.HttpOptions(timeout=_REQUEST_TIMEOUT_MS),
+        }
+        if system_instruction is not None:
+            cfg_kwargs["system_instruction"] = system_instruction
+        gen_config = types.GenerateContentConfig(**cfg_kwargs)
+
+        # Primera pasada rápida por toda la lista de modelos; si el primero falla, reintenta una vez al final
+        for candidate_model in [*models_to_try, self.model_name]:
+            try:
+                response = self.client.models.generate_content(
+                    model=candidate_model,
+                    contents=prompt,
+                    config=gen_config,
+                )
+                if response and response.text:
+                    raw_text = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                    parsed = schema.model_validate_json(raw_text)
+                    if isinstance(parsed, ReporteAuditoriaFirewall) and topology is not None:
+                        return enrich_report_zone_context(parsed, topology)  # type: ignore[return-value]
+                    return parsed
+            except Exception as e:
+                last_error = e
+                msg = str(e)
+                if "503" in msg or "429" in msg or "UNAVAILABLE" in msg:
+                    time.sleep(1)
+                continue
 
         raise RuntimeError(f"Error consultando Gemini tras reintentar con {models_to_try}: {last_error}")
 
@@ -155,20 +186,9 @@ class GeminiFirewallAdvisor:
             "Devuelve ÚNICAMENTE el JSON compatible con DictamenExcepcionIA."
         )
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=DictamenExcepcionIA,
-                ),
-            )
-            if response and response.text:
-                raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                res = DictamenExcepcionIA.model_validate_json(raw)
-                res.fuente = "gemini"
-                return res
+            res = self._generate_structured(prompt=prompt, schema=DictamenExcepcionIA)
+            res.fuente = "gemini"
+            return res
         except Exception:
             pass
         return DeterministicFirewallAdvisor().consult_exception(finding, topology, justificacion)
